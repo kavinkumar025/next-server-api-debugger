@@ -1,31 +1,26 @@
 # next-server-api-debugger
 
 [![npm](https://img.shields.io/npm/v/next-server-api-debugger)](https://www.npmjs.com/package/next-server-api-debugger)
-[![GitHub Actions](https://github.com/kavinkumar025/next-server-api-debugger/actions/workflows/ci.yml/badge.svg)](https://github.com/kavinkumar025/next-server-api-debugger/actions/workflows/ci.yml)
 
-**Inspect Next.js server-side API requests and responses in your browser console during local development.**
+**Automatic Next.js 16 server-side API debugging in your browser Console.**
 
-Full documentation, installation guide, examples and security notes: **[Package README](./next-server-api-debugger/README.md)**.
-
-## Install
+## Quick start
 
 ```bash
 npm install next-server-api-debugger
 npx next-server-api-debugger init
 ```
 
-This creates a project-specific debug key hash. The package defaults to `apiDebugLogging = "disabled"` in browser localStorage once `ApiDebugProvider` loads. For local-only debugging set the storage value to your chosen key, which is cleared immediately after validation. See the [full documentation](./next-server-api-debugger/README.md) for security limitations.
+After restarting `npm run dev`, open DevTools → Console:
 
-## Develop
-
-```bash
-cd next-server-api-debugger
-npm install
-npm run typecheck
-npm test
-npm pack --dry-run
+```javascript
+localStorage.setItem("apiDebugLogging", "YOUR_KEY");
 ```
 
-Development-only Node.js App Router support. See the detailed README for compatibility and limitations.
+The package generates the Next.js instrumentation hooks and protected routes. **No manual layout edits or provider required.**
 
-[Report an issue](https://github.com/kavinkumar025/next-server-api-debugger/issues) · [View npm package](https://www.npmjs.com/package/next-server-api-debugger)
+Use `npx next-server-api-debugger status` to check setup or `npx next-server-api-debugger init --reset` to rotate the key.
+
+**Development only; supported fetch interception is best-effort.**
+
+[Full package documentation](./next-server-api-debugger/README.md) · [Issues](https://github.com/kavinkumar025/next-server-api-debugger/issues).

@@ -19,5 +19,14 @@ export default defineConfig([
     banner: { js: '"use client";' },
     dts: true,
     splitting: false
+  },
+  {
+    entry: { browser: "src/browser.ts" },
+    platform: "browser",
+    format: ["esm"],
+    target: "es2022",
+    external: ["next", "react"],
+    dts: true,
+    splitting: false
   }
 ]);

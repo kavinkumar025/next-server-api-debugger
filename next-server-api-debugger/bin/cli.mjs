@@ -4,6 +4,7 @@ import { existsSync, readFileSync, writeFileSync, appendFileSync, chmodSync } fr
 import { resolve } from "node:path";
 import { stdin, stdout } from "node:process";
 import { createInterface } from "node:readline/promises";
+import { integrateNextApp, integrationStatus } from "./auto-integrate.mjs";
 
 
 function hidden(question) {
@@ -52,6 +53,10 @@ async function main() {
   let env=existsSync(envPath) ? readFileSync(envPath,"utf8") : "";
   const exists=/^NEXT_SERVER_API_DEBUGGER_KEY_HASH\s*=/m.test(env);
   if (action === "status") {
+    const wiring = integrationStatus(dir);
+    console.log(wiring.supported
+      ? (wiring.configured ? "Next.js debugger auto-integration: ready." : "Next.js debugger auto-integration: incomplete.")
+      : "Next.js debugger auto-integration: " + wiring.reason);
     console.log(exists
       ? "Debug key configured in this application's .env.local."
       : "No debug key found in this application's .env.local.");
@@ -65,6 +70,13 @@ async function main() {
     console.log("Interactive terminal needed. Run npx next-server-api-debugger init in your Next.js app.");
     return;
   }
+  // Configure supported Next.js apps after interactive terminal validation.
+  const wiring=integrateNextApp(dir);
+  if (!wiring.supported) {
+    throw new Error(wiring.reason + " Automatic setup did not change your app.");
+  }
+  for (const change of wiring.changes) console.log("[API Debugger] " + change);
+  if (wiring.alreadyConfigured) console.log("[API Debugger] Next.js already integrated.");
   if (exists && !process.argv.includes("--reset")) {
     console.log("A debugging key is already configured.");
     console.log("For safety, the original key cannot be shown because only a salted hash was stored.");
