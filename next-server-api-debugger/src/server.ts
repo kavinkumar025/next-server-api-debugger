@@ -5,7 +5,7 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
 const COOKIE = "__next_server_api_debug";
-const DEBUG_ROUTE = "/api/__server-api-debug/";
+const DEBUG_ROUTE = "/api/next-server-api-debugger/";
 const TTL = 30 * 60 * 1000;
 const MAX_LOGS = 5000;
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
@@ -206,12 +206,12 @@ export function debugFetch(input: RequestInfo | URL, init?: RequestInit): Promis
   if ((globalThis.fetch as FetchWithMarker)[FETCH_KEY]) return globalThis.fetch(input, init);
   return capture(globalThis.fetch.bind(globalThis), input, init);
 }
-/** app/api/__server-api-debug/session/route.ts - GET */
+/** app/api/next-server-api-debugger/session/route.ts - GET */
 export async function debugSessionGET(request: Request): Promise<Response> {
   if (!enabled() || !localRequest(request)) return response({ error:"Debugger is disabled" },404);
   return response({ authenticated: Boolean(active(cookieToken(request))) });
 }
-/** app/api/__server-api-debug/session/route.ts - POST */
+/** app/api/next-server-api-debugger/session/route.ts - POST */
 export async function debugSessionPOST(request: Request): Promise<Response> {
   if (!enabled() || !localRequest(request)) return response({ error:"Debugger is disabled" },404);
   if (!sameOrigin(request)) return response({ error:"Invalid origin" },403);
@@ -239,7 +239,7 @@ export async function debugSessionPOST(request: Request): Promise<Response> {
     "Set-Cookie": COOKIE + "=" + token + "; HttpOnly; SameSite=Strict; Path=/; Max-Age=1800" + secure
   });
 }
-/** app/api/__server-api-debug/session/route.ts - DELETE */
+/** app/api/next-server-api-debugger/session/route.ts - DELETE */
 export async function debugSessionDELETE(request: Request): Promise<Response> {
   if (!enabled() || !localRequest(request)) return response({ error:"Debugger is disabled" },404);
   if (!sameOrigin(request)) return response({ error:"Invalid origin" },403);
@@ -250,7 +250,7 @@ export async function debugSessionDELETE(request: Request): Promise<Response> {
     "Set-Cookie": COOKIE + "=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0" + secure
   });
 }
-/** app/api/__server-api-debug/events/route.ts - GET */
+/** app/api/next-server-api-debugger/events/route.ts - GET */
 export async function debugEventsGET(request: Request): Promise<Response> {
   if (!enabled() || !localRequest(request)) return response({ error:"Debugger is disabled" },404);
   if (!active(cookieToken(request))) return response({ error:"Session expired; sign in again" },401);

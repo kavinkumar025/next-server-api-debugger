@@ -1,7 +1,7 @@
 import type { ApiDebugEvent } from "./server";
 
 const KEY = "apiDebugLogging";
-const BASE = "/api/__server-api-debug";
+const BASE = "/api/next-server-api-debugger";
 const REQUEST: RequestInit = { cache: "no-store", credentials: "same-origin" };
 type BrowserGlobal = Window & { __nextServerApiDebuggerAutoStarted?: boolean };
 

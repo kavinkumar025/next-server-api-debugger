@@ -3,7 +3,7 @@
 import { useEffect, type ReactNode } from "react";
 import type { ApiDebugEvent } from "./server";
 
-const BASE = "/api/__server-api-debug";
+const BASE = "/api/next-server-api-debugger";
 const HTTP: RequestInit = { cache: "no-store", credentials: "same-origin" };
 
 function printEvent(event: ApiDebugEvent): void {

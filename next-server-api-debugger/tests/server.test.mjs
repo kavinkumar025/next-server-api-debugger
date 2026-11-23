@@ -4,7 +4,7 @@ import { randomBytes,scryptSync } from "node:crypto";
 import { debugSessionGET,debugSessionPOST,debugSessionDELETE,debugEventsGET } from "../dist/server.js";
 
 const key="kavin";
-const url="http://localhost:3000/api/__server-api-debug/session";
+const url="http://localhost:3000/api/next-server-api-debugger/session";
 before(()=>{
   process.env.NODE_ENV="development";
   const salt=randomBytes(16);
@@ -33,18 +33,18 @@ test("session login, authenticate, poll, logout",async()=>{
   const hdr={cookie:cookie.split(";")[0]};
   const checked=await debugSessionGET(new Request(url,{headers:hdr}));
   assert.equal((await checked.json()).authenticated,true);
-  const events=await debugEventsGET(new Request("http://localhost:3000/api/__server-api-debug/events",{headers:hdr}));
+  const events=await debugEventsGET(new Request("http://localhost:3000/api/next-server-api-debugger/events",{headers:hdr}));
   assert.deepEqual((await events.json()).events,[]);
   const deleted=await debugSessionDELETE(new Request(url,{method:"DELETE",headers:{...hdr,origin:"http://localhost:3000"}}));
   assert.equal(deleted.status,200);
-  const after=await debugEventsGET(new Request("http://localhost:3000/api/__server-api-debug/events",{headers:hdr}));
+  const after=await debugEventsGET(new Request("http://localhost:3000/api/next-server-api-debugger/events",{headers:hdr}));
   assert.equal(after.status,401);
 });
 test("production disables login and events",async()=>{
   process.env.NODE_ENV="production";
   try {
     assert.equal((await debugSessionPOST(login(key))).status,404);
-    assert.equal((await debugEventsGET(new Request("http://localhost:3000/api/__server-api-debug/events"))).status,404);
+    assert.equal((await debugEventsGET(new Request("http://localhost:3000/api/next-server-api-debugger/events"))).status,404);
   } finally { process.env.NODE_ENV="development"; }
 });
 
@@ -66,7 +66,7 @@ test("buffers pre-auth server fetch, including method and sanitized JSON respons
     assert.equal(signed.status, 200);
     const cookie = signed.headers.get("set-cookie").split(";")[0];
     const events = await debugEventsGET(new Request(
-      "http://localhost:3000/api/__server-api-debug/events?since=0", { headers: { cookie } }
+      "http://localhost:3000/api/next-server-api-debugger/events?since=0", { headers: { cookie } }
     ));
     const data = await events.json();
     const entry = data.events.find(x => x.url.includes("example.test/api/orders"));
@@ -80,7 +80,7 @@ test("buffers pre-auth server fetch, including method and sanitized JSON respons
 });
 
 test("restricts debugger endpoints to loopback during development", async () => {
-  const request = new Request("http://example.com/api/__server-api-debug/session", {
+  const request = new Request("http://example.com/api/next-server-api-debugger/session", {
     method: "POST",
     headers: { origin: "http://example.com", "Content-Type": "application/json" },
     body: JSON.stringify({ key })

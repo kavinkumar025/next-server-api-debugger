@@ -79,8 +79,8 @@ The package uses Next.js server and client instrumentation hooks and App Router 
 |---|---|
 | `instrumentation.ts` / `src/instrumentation.ts` | Initialize Node.js server-side fetch interception |
 | `instrumentation-client.ts` / `src/instrumentation-client.ts` | Automatically start browser logging |
-| `app/api/__server-api-debug/session/route.ts` | Verify developer key / manage session |
-| `app/api/__server-api-debug/events/route.ts` | Deliver sanitized logs to authenticated local browser |
+| `app/api/next-server-api-debugger/session/route.ts` | Verify developer key / manage session |
+| `app/api/next-server-api-debugger/events/route.ts` | Deliver sanitized logs to authenticated local browser |
 
 JavaScript (`.js`) and `src/app` applications are also supported.
 

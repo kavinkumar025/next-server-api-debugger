@@ -27,7 +27,7 @@ test("auto installs all hooks without changing a layout; rerunning does nothing"
     assert.equal(integrationStatus(dir).configured,true);
     assert.match(readFileSync(join(root,"instrumentation.ts"),"utf8"),/registerServerDebugger/);
     assert.match(readFileSync(join(root,"instrumentation-client.ts"),"utf8"),/next-server-api-debugger\/browser/);
-    assert.match(readFileSync(join(app,"api","__server-api-debug","session","route.ts"),"utf8"),/debugSessionPOST/);
+    assert.match(readFileSync(join(app,"api","next-server-api-debugger","session","route.ts"),"utf8"),/debugSessionPOST/);
     assert.equal(readFileSync(layout,"utf8"),'export default function Layout(){return null;}\n');
     const second=integrateNextApp(dir);
     assert.equal(second.alreadyConfigured,true);
@@ -55,7 +55,7 @@ test("keeps prior instrumentation exports in a backup wrapper and appends browse
 });
 test("never overwrites conflicting application route handlers",()=>{
   fixture(({dir,app,root})=>{
-    const sessionDir=join(app,"api","__server-api-debug","session");
+    const sessionDir=join(app,"api","next-server-api-debugger","session");
     mkdirSync(sessionDir,{recursive:true});
     const route=join(sessionDir,"route.ts");
     writeFileSync(route,'export function GET(){ return Response.json({ mine: true }); }\n');
@@ -69,7 +69,7 @@ test("supports JavaScript-only Next.js App Router",()=>{
     assert.equal(integrateNextApp(dir).supported,true);
     assert.ok(existsSync(join(root,"instrumentation.js")));
     assert.ok(existsSync(join(root,"instrumentation-client.js")));
-    assert.ok(existsSync(join(app,"api","__server-api-debug","events","route.js")));
+    assert.ok(existsSync(join(app,"api","next-server-api-debugger","events","route.js")));
   },{typescript:false,src:false});
 });
 test("skips projects outside supported Next.js 16 App Router",()=>{

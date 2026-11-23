@@ -65,8 +65,8 @@ export function integrationStatus(dir) {
   const paths = [
     info.server || join(info.root,"instrumentation."+info.ext),
     info.browser || join(info.root,"instrumentation-client."+info.ext),
-    join(info.app,"api","__server-api-debug","session","route."+info.ext),
-    join(info.app,"api","__server-api-debug","events","route."+info.ext)
+    join(info.app,"api","next-server-api-debugger","session","route."+info.ext),
+    join(info.app,"api","next-server-api-debugger","events","route."+info.ext)
   ];
   return { supported:true, configured:hasMarker(paths[0]) &&
     existsSync(paths[1]) && read(paths[1]).includes(BROWSER_IMPORT) &&
@@ -78,8 +78,8 @@ export function integrateNextApp(dir, {dryRun=false}={}) {
   const {app,root,ext}=info;
   const server=info.server || join(root,"instrumentation."+ext);
   const client=info.browser || join(root,"instrumentation-client."+ext);
-  const session=join(app,"api","__server-api-debug","session","route."+ext);
-  const events=join(app,"api","__server-api-debug","events","route."+ext);
+  const session=join(app,"api","next-server-api-debugger","session","route."+ext);
+  const events=join(app,"api","next-server-api-debugger","events","route."+ext);
   const changes=[];
   const ensureRoute=(path,source)=>{
     if (existsSync(path) && !hasMarker(path))
