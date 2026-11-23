@@ -48,10 +48,10 @@ function detect(dir) {
   if (!app) return { supported:false, reason:"No app/ or src/app/ directory found." };
   const preferred = dirname(app);
   const other = preferred === dir ? join(dir,"src") : dir;
-  for (const filename of ["instrumentation","instrumentation-client"]) {
-    if (existing(preferred,filename) && existing(other,filename)) {
-      throw new Error("Conflicting " + filename + " files at root and src/. Please reconcile them.");
-    }
+  const prefFiles=["instrumentation","instrumentation-client"].map(n=>existing(preferred,n)).filter(Boolean);
+  const otherFiles=["instrumentation","instrumentation-client"].map(n=>existing(other,n)).filter(Boolean);
+  if (prefFiles.length && otherFiles.length) {
+    throw new Error("Instrumentation files are split across root and src/. Keep them in one directory.");
   }
   const root = existing(other,"instrumentation") || existing(other,"instrumentation-client") ? other : preferred;
   const server = existing(root,"instrumentation");
@@ -82,6 +82,8 @@ export function integrateNextApp(dir, {dryRun=false}={}) {
   const events=join(app,"api","next-server-api-debugger","events","route."+ext);
   const changes=[];
   const ensureRoute=(path,source)=>{
+    const alt=path.replace(/\.(js|ts)$/, (_,extension)=>extension==="js"?".ts":".js");
+    if (existsSync(alt)) throw new Error("Conflicting debugger route extension: "+relative(info.dir,alt));
     if (existsSync(path) && !hasMarker(path))
       throw new Error("Debugger route conflicts with an existing file: "+relative(info.dir,path));
     if (!existsSync(path)) changes.push({type:"write",path,source});
@@ -95,7 +97,7 @@ export function integrateNextApp(dir, {dryRun=false}={}) {
     const old=join(root,"instrumentation.next-server-api-debugger-original."+server.split(".").pop());
     if (existsSync(old)) throw new Error("Existing instrumentation backup blocks auto-setup: "+relative(info.dir,old));
     const importPath="./"+basename(old).replace(/\.(js|ts)$/,"");
-    const oldRegister=ext==="ts"
+    const oldRegister=server.endsWith(".ts")
       ? "(originalInstrumentation as { register?: () => unknown }).register"
       : "originalInstrumentation.register";
     const source=[

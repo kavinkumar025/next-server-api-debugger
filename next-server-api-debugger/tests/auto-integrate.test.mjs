@@ -80,3 +80,30 @@ test("skips projects outside supported Next.js 16 App Router",()=>{
     assert.equal(existsSync(join(root,"instrumentation.ts")),false);
   },{version:"^15.5.0"});
 });
+
+test("keeps a JavaScript instrumentation file valid inside a TypeScript app",()=>{
+  fixture(({dir,root})=>{
+    writeFileSync(join(root,"instrumentation.js"),
+      'export async function register() { console.info("original"); }\n');
+    integrateNextApp(dir);
+    const output=readFileSync(join(root,"instrumentation.js"),"utf8");
+    assert.match(output,/originalInstrumentation\.register/);
+    assert.doesNotMatch(output,/\bas\s*\{\s*register/);
+  });
+});
+test("rejects the opposite JS/TS API route extension",()=>{
+  fixture(({dir,app,root})=>{
+    const path=join(app,"api","next-server-api-debugger","session");
+    mkdirSync(path,{recursive:true});
+    writeFileSync(join(path,"route.js"),"export function GET() { return new Response('other'); }\n");
+    assert.throws(()=>integrateNextApp(dir),/Conflicting debugger route extension/);
+    assert.equal(existsSync(join(root,"instrumentation.ts")),false);
+  });
+});
+test("does not split instrumentation between root and src",()=>{
+  fixture(({dir,root})=>{
+    writeFileSync(join(root,"instrumentation-client.ts"),'export const x = 1;\n');
+    writeFileSync(join(dir,"instrumentation.ts"),'export function register() {}\n');
+    assert.throws(()=>integrateNextApp(dir),/split across root and src/);
+  });
+});
