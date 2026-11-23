@@ -1,126 +1,168 @@
 "use client";
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+
+import { useEffect, type ReactNode } from "react";
 import type { ApiDebugEvent } from "./server";
 
 const BASE = "/api/__server-api-debug";
-const FETCH_OPTIONS: RequestInit = { cache:"no-store", credentials:"same-origin" };
-const CURSOR = "next-server-api-debugger:cursor";
+const HTTP: RequestInit = { cache: "no-store", credentials: "same-origin" };
+
 function printEvent(event: ApiDebugEvent): void {
   const failed = event.status === 0 || event.status >= 400;
-  const label = event.status === 0 ? "NETWORK ERROR" : "HTTP " + event.status;
-  const color = failed ? "color:#dc2626;font-weight:bold" : "color:#16a34a;font-weight:bold";
-  console.groupCollapsed("%c[Server API] " + event.method + " " + event.url + " → " +
-    label + " (" + event.durationMs + " ms)", color);
+  const status = event.status === 0 ? "NETWORK ERROR" : "HTTP " + event.status;
+  const style = failed ? "color:#dc2626;font-weight:bold" : "color:#16a34a;font-weight:bold";
+  console.groupCollapsed(
+    "%c[Server API] " + event.method + " " + event.url + " → " + status +
+    " (" + event.durationMs + " ms)", style
+  );
   console.log("Request", {
-    method: event.method, url: event.url, body: event.requestBody ?? "Not captured / empty"
+    method: event.method, url: event.url,
+    body: event.requestBody ?? "Empty or not captured"
   });
   console.log("Response", {
-    status: event.status, body: event.responseBody ?? "Not captured / empty"
+    status: event.status, body: event.responseBody ?? "Empty or not captured"
   });
   console.log("Time", new Date(event.time).toLocaleString());
-  if (event.error) console.error("Error", event.error);
+  if (event.error) console.error("Request error:", event.error);
   console.groupEnd();
 }
+
+/**
+ * The chosen key is briefly present in localStorage until this provider reads
+ * and removes it. Browser storage is NOT secret. Use only with a local dev app.
+ * After validation, localStorage contains only "enabled", never the key.
+ */
 export function ApiDebugProvider({
-  children, storageKey="apiDebugLoggin", pollIntervalMs=1500
+  children, storageKey = "apiDebugLogging", pollIntervalMs = 750
 }: { children: ReactNode; storageKey?: string; pollIntervalMs?: number }) {
-  const [enabled,setEnabled] = useState(false);
-  const [authenticated,setAuthenticated] = useState(false);
-  const [secret,setSecret] = useState("");
-  const [busy,setBusy] = useState(false);
-  const [error,setError] = useState("");
-  const prev = useRef(false);
-  const cursor = useRef(0);
   useEffect(() => {
-    try { cursor.current = Number(sessionStorage.getItem(CURSOR) || "0") || 0; } catch {}
-    const sync = () => {
-      let value = false;
-      try { value = localStorage.getItem(storageKey) === "enabled"; } catch {}
-      if (prev.current && !value) {
-        void fetch(BASE + "/session", { ...FETCH_OPTIONS,method:"DELETE" }).catch(()=>{});
-        setAuthenticated(false);
-      }
-      prev.current = value;
-      setEnabled(value);
+    let disposed = false;
+    let authorized = false;
+    let pending = false;
+    let polling = false;
+    let cursor = 0;
+
+    const setSetting = (value: string) => {
+      try { localStorage.setItem(storageKey, value); } catch {}
     };
-    sync();
-    const id = window.setInterval(sync,1000);
-    window.addEventListener("storage",sync);
-    return () => { window.clearInterval(id); window.removeEventListener("storage",sync); };
-  },[storageKey]);
-  useEffect(() => {
-    if (!enabled) return;
-    let alive=true;
-    void fetch(BASE + "/session",FETCH_OPTIONS)
-      .then(async res => res.ok ? res.json() : { authenticated:false })
-      .then(data => { if(alive) setAuthenticated(Boolean(data.authenticated)); })
-      .catch(()=> { if(alive) setError("Debugger routes unavailable. Check the Next.js integration."); });
-    return () => { alive=false; };
-  },[enabled]);
-  useEffect(() => {
-    if (!enabled || !authenticated) return;
-    let alive=true, running=false;
-    const poll=async()=> {
-      if (!alive || running) return;
-      running=true;
+    const readSetting = () => {
+      try { return localStorage.getItem(storageKey); } catch { return null; }
+    };
+
+    async function signOut(): Promise<void> {
+      authorized = false;
       try {
-        const res=await fetch(BASE + "/events?since=" + cursor.current,FETCH_OPTIONS);
-        if (res.status===401) { if(alive) setAuthenticated(false); return; }
-        if (!res.ok) return;
-        const data:{events?:ApiDebugEvent[]} = await res.json();
-        for(const event of data.events || []) {
-          if(!alive) break;
-          printEvent(event);
-          cursor.current=Math.max(cursor.current,event.id);
-          try { sessionStorage.setItem(CURSOR,String(cursor.current)); } catch {}
+        await fetch(BASE + "/session", { ...HTTP, method: "DELETE" });
+      } catch {
+        // Disabling console output remains immediate even if the server is offline.
+      }
+    }
+
+    async function checkExistingSession(): Promise<void> {
+      pending = true;
+      try {
+        const response = await fetch(BASE + "/session", HTTP);
+        const data = response.ok ? await response.json() : { authenticated: false };
+        if (disposed || readSetting() !== "enabled") return;
+        if (data.authenticated) {
+          authorized = true;
+          console.info("[API Debugger] Connected. Replaying available server API calls.");
+        } else {
+          setSetting("disabled");
+          console.info("[API Debugger] Session expired. Set " + storageKey + " to your debug key again.");
         }
-      } catch {} finally {running=false;}
+      } catch {
+        if (!disposed) {
+          setSetting("disabled");
+          console.warn("[API Debugger] Debug endpoints unavailable. Check your Next.js setup.");
+        }
+      } finally { pending = false; }
+    }
+
+    async function signIn(key: string): Promise<void> {
+      pending = true;
+      if (authorized) await signOut();
+      try {
+        const response = await fetch(BASE + "/session", {
+          ...HTTP, method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key })
+        });
+        const data = await response.json();
+        if (disposed) return;
+        if (!response.ok) {
+          console.error("[API Debugger] " + (data.error || "Key not accepted") +
+            ". Set " + storageKey + " to your key to retry.");
+          return;
+        }
+        cursor = 0;
+        authorized = true;
+        setSetting("enabled");
+        console.info("[API Debugger] Key verified. Server API requests and responses will appear here.");
+      } catch {
+        if (!disposed) console.error("[API Debugger] Cannot connect. Check debugger routes and restart dev server.");
+      } finally { pending = false; }
+    }
+
+    function sync(): void {
+      if (disposed || pending) return;
+      const value = readSetting();
+      if (value === null) {
+        setSetting("disabled");
+        return;
+      }
+      if (value === "enabled") {
+        if (!authorized) void checkExistingSession();
+        return;
+      }
+      if (value === "" || value === "disabled") {
+        if (authorized) void signOut();
+        return;
+      }
+      // Read-and-clear first, before making network requests. A browser-stored
+      // secret remains observable to scripts during this short interval.
+      setSetting("disabled");
+      if (value.length > 24) {
+        console.error("[API Debugger] Your debugging key must contain 1–24 characters.");
+        return;
+      }
+      void signIn(value);
+    }
+
+    async function poll(): Promise<void> {
+      if (!authorized || polling || disposed || readSetting() !== "enabled") return;
+      polling = true;
+      try {
+        const res = await fetch(BASE + "/events?since=" + cursor, HTTP);
+        if (res.status === 401) {
+          authorized = false;
+          setSetting("disabled");
+          console.warn("[API Debugger] Session expired. Enter your debug key again.");
+          return;
+        }
+        if (!res.ok) return;
+        const data: { events?: ApiDebugEvent[] } = await res.json();
+        for (const event of data.events || []) {
+          if (disposed || readSetting() !== "enabled") break;
+          printEvent(event);
+          cursor = Math.max(cursor, event.id);
+        }
+      } catch {
+        // Temporary network issues should not stop future polling.
+      } finally { polling = false; }
+    }
+
+    sync();
+    const syncTimer = window.setInterval(sync, 400);
+    const pollTimer = window.setInterval(() => void poll(), Math.max(500, pollIntervalMs));
+    const onStorage = () => sync();
+    window.addEventListener("storage", onStorage);
+    return () => {
+      disposed = true;
+      window.clearInterval(syncTimer);
+      window.clearInterval(pollTimer);
+      window.removeEventListener("storage", onStorage);
     };
-    void poll();
-    const timer=window.setInterval(()=>void poll(),Math.max(pollIntervalMs,500));
-    return ()=> {alive=false;window.clearInterval(timer);};
-  },[enabled,authenticated,pollIntervalMs]);
-  async function login(e:FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if(!secret || busy) return;
-    setBusy(true);setError("");
-    try {
-      const res=await fetch(BASE + "/session",{
-        ...FETCH_OPTIONS,method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({key:secret})
-      });
-      const data=await res.json();
-      if(!res.ok) {setError(data.error || "Authentication failed");return;}
-      setSecret("");
-      try { sessionStorage.removeItem(CURSOR); } catch {}
-      window.location.reload();
-    } catch {setError("Could not reach debugger login endpoint");}
-    finally {setBusy(false);}
-  }
-  return <>
-    {children}
-    {enabled && !authenticated && <div style={{
-      position:"fixed",right:16,bottom:16,width:320,maxWidth:"calc(100vw - 32px)",
-      zIndex:2147483647,background:"#0f172a",color:"#f8fafc",
-      border:"1px solid #334155",borderRadius:12,padding:18,
-      boxShadow:"0 12px 30px rgba(0,0,0,.35)",fontFamily:"system-ui,sans-serif",fontSize:13
-    }}>
-      <strong style={{display:"block",marginBottom:8}}>Server API Debugger</strong>
-      <p style={{color:"#cbd5e1"}}>Enter the private key chosen at install. It is never saved in localStorage.</p>
-      <form onSubmit={login}>
-        <input type="password" autoComplete="off" aria-label="Private debugging key"
-          placeholder="Private debugging key" minLength={24} required
-          value={secret} onChange={e=>setSecret(e.target.value)}
-          style={{display:"block",boxSizing:"border-box",width:"100%",padding:9,
-            borderRadius:6,color:"white",background:"#1e293b",
-            border:"1px solid #475569",marginBottom:10}}/>
-        {error && <div role="alert" style={{color:"#fca5a5",marginBottom:8}}>{error}</div>}
-        <button disabled={busy} type="submit" style={{
-          background:"#16a34a",color:"white",border:0,padding:"9px 14px",
-          borderRadius:6,cursor:"pointer",fontWeight:600
-        }}>{busy ? "Verifying..." : "Enable console logs"}</button>
-      </form>
-      <p style={{color:"#94a3b8"}}>Disable: localStorage.removeItem("{storageKey}")</p>
-    </div>}
-  </>;
+  }, [storageKey, pollIntervalMs]);
+
+  return <>{children}</>;
 }

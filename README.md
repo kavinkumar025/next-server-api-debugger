@@ -14,7 +14,7 @@ npm install next-server-api-debugger
 npx next-server-api-debugger init
 ```
 
-This creates a project-specific private key configuration. The private key itself is **not** saved in localStorage or published with the package.
+This creates a project-specific debug key hash. The package defaults to `apiDebugLogging = "disabled"` in browser localStorage once `ApiDebugProvider` loads. For local-only debugging set the storage value to your chosen key, which is cleared immediately after validation. See the [full documentation](./next-server-api-debugger/README.md) for security limitations.
 
 ## Develop
 

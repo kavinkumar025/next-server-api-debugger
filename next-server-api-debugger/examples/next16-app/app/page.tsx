@@ -5,7 +5,7 @@ export default async function Page() {
   const data=await res.json();
   return <main style={{padding:32}}>
     <h1>Server API Debugger Demo</h1>
-    <p>Enable: localStorage.setItem("apiDebugLoggin","enabled"); location.reload();</p>
+    <p>Activate in browser Console: localStorage.setItem("apiDebugLogging", "YOUR_KEY");</p>
     <pre>{JSON.stringify(data,null,2)}</pre>
   </main>;
 }

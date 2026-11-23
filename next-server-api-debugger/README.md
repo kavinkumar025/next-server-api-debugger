@@ -1,99 +1,81 @@
 # next-server-api-debugger
 
-**See Next.js server-side API requests and responses in your browser's Developer Tools Console — without moving those requests to the client.**
+**Debug Next.js server-side API calls from Chrome / Edge DevTools Console during local development.**
 
 [![npm](https://img.shields.io/npm/v/next-server-api-debugger)](https://www.npmjs.com/package/next-server-api-debugger)
+[![CI](https://github.com/kavinkumar025/next-server-api-debugger/actions/workflows/ci.yml/badge.svg)](https://github.com/kavinkumar025/next-server-api-debugger/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![GitHub Actions](https://github.com/kavinkumar025/next-server-api-debugger/actions/workflows/ci.yml/badge.svg)](https://github.com/kavinkumar025/next-server-api-debugger/actions/workflows/ci.yml)
 
-> **Development-only debugging tool.** Currently targets Next.js 16 App Router using the Node.js runtime, with React 19. Use only with development or synthetic data. It is not a production monitoring product.
+> **Local development only.** Compatible target: Next.js 16 App Router, React 19, Node.js runtime. The package does not move server API requests into the browser, and it does not replace production monitoring.
 
-## Why use it?
+## What you'll see
 
-Next.js Server Components and server-side functions can call external APIs using `fetch()`. Those outgoing requests do not normally appear as actual requests in the browser's Network tab. This package captures supported **server-side** fetch activity and sends **sanitized debugging events** to an authenticated browser session, where they appear as friendly, expandable console groups.
-
-**Example console output (illustrative):**
+Open your browser Console to inspect **GET / POST / PUT / PATCH / DELETE**, request and response JSON previews, status codes, timings and errors. Example:
 
 ```text
-[Server API] GET https://api.example.com/products → HTTP 200 (145 ms)
-  Request  { method: "GET", url: "https://api.example.com/products", body: "Not captured / empty" }
-  Response { status: 200, body: { products: [{ id: 1, name: "Watch" }] } }
-  Time     23/11/2026, 9:00 PM
+[Server API] GET https://api.example.test/products → HTTP 200 (145 ms)
+   Request  { method: "GET", url: "...", body: "Empty or not captured" }
+   Response { status: 200, body: { products: [{ id: 1 }] } }
+   Time     23/11/2026, 10:00 PM
 
-[Server API] POST https://api.example.com/orders → HTTP 201 (238 ms)
-  Request  { method: "POST", body: { productId: 101, quantity: 2 } }
-  Response { status: 201, body: { orderId: 12345 } }
+[Server API] POST https://api.example.test/orders → HTTP 201 (238 ms)
+   Request  { method: "POST", body: { productId: 1, quantity: 2 } }
+   Response { status: 201, body: { orderId: 123 } }
 ```
 
-The values above are examples, not captured real traffic.
+**Note:** These are sample values. Native browser Network panels do not display server-to-server traffic; this package forwards debugging events into the **Console**.
 
-## Features
+## Features (1.0.2)
 
-- Inspect supported **GET, POST, PUT, PATCH, DELETE** and other `fetch()` method calls.
-- See sanitized URL, method, HTTP status, request/response JSON previews, elapsed time, and a friendly error message for failed calls.
-- Expand or collapse each request in the **Chrome / Edge browser Console**.
-- Create a **different private debugging key for each project**.
-- The private key is never written into the npm package or stored in browser `localStorage`. A salted `scrypt` hash is kept in your application's `.env.local`.
-- Only an authenticated browser session can poll captured events; sessions expire after 30 minutes.
-- Enable or disable logging using `localStorage` without modifying your application's API calls.
-- Development-only endpoints return 404 in `NODE_ENV=production`.
-- Explicit `debugFetch()` fallback for calls missed by automatic global fetch interception.
+- Easy one-question setup: custom developer key containing **1–24 characters**. A short key (for example `kavin`) is accepted.
+- The client provider initializes `localStorage.apiDebugLogging` to **`disabled`** when it first loads. npm installation itself cannot write into a user's browser storage.
+- For local debugging, put your matching key in `localStorage.apiDebugLogging`; the client immediately reads it and replaces it with `disabled` while verifying. On successful verification, the value becomes **`enabled`**.
+- The original key is not permanently saved by the package: the app's `.env.local` stores a **salted scrypt hash**, not plaintext. **However, any key placed in localStorage is briefly readable by browser scripts and may remain visible in DevTools command history.** This is **not a secure secret entry method**.
+- Captured Node.js `fetch` calls are buffered (up to 5,000 recent events **per local Node process**) and also print a server-terminal log line. This helps recover logs even if browser authentication happens *after* a server-side fetch.
+- Authenticated browsers on the same **local** development server can replay those buffered logs. Because this is a development-wide ring buffer, it is **not isolated by user**.
+- JSON request/response previews with best-effort sensitive-field redaction; maximum 65,536 bytes per preview.
+- The debugging endpoints are restricted to `localhost`, `127.0.0.1` and IPv6 loopback, and are disabled in `NODE_ENV=production`.
 
-## Compatibility
+## Install
 
-| Capability | Status |
-| --- | --- |
-| Next.js 16 App Router | Intended support |
-| React 19 | Intended support |
-| Node.js runtime | Supported target |
-| Next.js `fetch()` | Best-effort automatic interception |
-| Explicit `debugFetch()` | Supported fallback in request context |
-| Browser Console | Yes |
-| Browser's native Network tab | No — server-side requests are not native browser traffic |
-| Edge runtime, Axios, database queries | Not supported |
-| Production / distributed serverless deployments | Not supported |
-| Next.js Pages Router | Not currently a tested integration |
-
-This project uses in-process memory for sessions and captured events. Next.js may modify `fetch` internally, so the global interceptor cannot guarantee every server request is captured.
-
-## Quick start
-
-### 1. Install in your Next.js project
-
-Run this command **inside the Next.js application folder that contains its `package.json`**:
+Run inside the consuming Next.js project root:
 
 ```bash
 npm install next-server-api-debugger
 npx next-server-api-debugger init
 ```
 
-The `init` command asks you to choose either a custom key or a generated key. Custom input is hidden. A generated key is shown once so you can save it privately.
-
-> **Optional install-time prompt:** `npm install --foreground-scripts next-server-api-debugger` attempts to run interactive setup during installation. This depends on npm and terminal behavior. The separate `init` command above is the reliable method.
-
-Example installation:
+**Installation prompt (1.0.2):**
 
 ```text
 Next Server API Debugger — private key setup
 
-Choose key: [1] Custom (default) / [2] Generate: 1
-Enter a private key (hidden; 24+ characters):
-
+Choose your debug key (1-24 characters, hidden):
 ✔ Salted key hash saved in .env.local
 ✔ Debug secrets excluded from Git
 ```
 
-The setup adds the following **server-only** variable to your `.env.local`:
+Just type your desired key and press Enter — no `[1]/[2]` menu. Input is hidden. For example, `kavin`, `debug123`, or `=` are accepted. Short and guessable keys are appropriate **only for a trusted local development server**.
 
-```dotenv
-NEXT_SERVER_API_DEBUGGER_KEY_HASH=<generated-salt-and-hash>
+If upgrading from 1.0.0 or 1.0.1, **rotate your key** and restart Next.js because the new version enforces a 1–24-character key:
+
+```bash
+npx next-server-api-debugger init --reset
 ```
 
-Do not put that variable into `NEXT_PUBLIC_*`, commit it to Git, or paste your original key in the browser console. To rotate the key, run `npx next-server-api-debugger init --reset`. Restart the dev server after changing `.env.local`.
+There is also a best-effort installation-time prompt with:
 
-### 2. Add `instrumentation.ts`
+```bash
+npm install --foreground-scripts next-server-api-debugger
+```
 
-At your Next.js application root (or inside `src/` when using a `src`-based app):
+npm lifecycle scripts may not have an interactive terminal. The explicit `init` command is the reliable fallback.
+
+## Next.js integration
+
+### 1. `instrumentation.ts`
+
+Add at your Next.js root, or `src/instrumentation.ts` if your app uses `src`:
 
 ```ts
 export async function register() {
@@ -109,22 +91,19 @@ export async function register() {
 }
 ```
 
-`captureBodies: true` previews small JSON bodies. For safer defaults, set it to `false`.
+This installs a **best-effort** `globalThis.fetch` wrapper on the Node.js server. If Next.js internally replaces or bypasses that wrapper, use `debugFetch` explicitly (below).
 
-### 3. Create the session route
+### 2. Authentication route
 
-Create `app/api/__server-api-debug/session/route.ts` (or `src/app/api/.../route.ts`):
+Create `app/api/__server-api-debug/session/route.ts`:
 
 ```ts
 import {
-  debugSessionGET,
-  debugSessionPOST,
-  debugSessionDELETE
+  debugSessionGET, debugSessionPOST, debugSessionDELETE
 } from "next-server-api-debugger/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
 export {
   debugSessionGET as GET,
   debugSessionPOST as POST,
@@ -132,35 +111,33 @@ export {
 };
 ```
 
-### 4. Create the events route
+### 3. Events route
 
 Create `app/api/__server-api-debug/events/route.ts`:
 
 ```ts
 import { debugEventsGET } from "next-server-api-debugger/server";
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export { debugEventsGET as GET };
 ```
 
-### 5. Add the browser provider
+If you use the Next.js `src/` directory, create these routes under `src/app/` instead.
 
-In `app/layout.tsx`, wrap your current children. Keep your existing HTML, metadata, styles, and layout:
+### 4. Browser provider
+
+Merge into your existing `app/layout.tsx` without replacing unrelated layout content:
 
 ```tsx
 import { ApiDebugProvider } from "next-server-api-debugger/client";
-import type { ReactNode } from "react";
 
-export default function RootLayout({
-  children
-}: {
-  children: ReactNode;
+export default function RootLayout({ children }: {
+  children: React.ReactNode;
 }) {
   return (
     <html lang="en">
       <body>
-        <ApiDebugProvider storageKey="apiDebugLoggin">
+        <ApiDebugProvider storageKey="apiDebugLogging">
           {children}
         </ApiDebugProvider>
       </body>
@@ -169,143 +146,112 @@ export default function RootLayout({
 }
 ```
 
-If you already have a root layout, **merge** the provider into it rather than replacing the entire file.
+### 5. Start development and activate
 
-### 6. Start your app and activate debugging
+Restart your local development server after setup:
 
 ```bash
 npm run dev
 ```
 
-Open your local app in the browser, then open DevTools → Console:
+Open your local app, then Chrome DevTools → Console:
 
-```js
-localStorage.setItem("apiDebugLoggin", "enabled");
-location.reload();
+```javascript
+// Set your own 1–24 character developer key, chosen during init:
+localStorage.setItem("apiDebugLogging", "kavin");
 ```
 
-A small **Server API Debugger** login appears. Enter your private key. After authorization the page reloads, and supported requests made in that authenticated Next.js request context are forwarded into the browser Console.
+The provider checks the storage value automatically. After successful server verification, the key is replaced with `enabled`:
 
-**Important:** A key in `localStorage` alone is never treated as authentication. The value `enabled` is just an on/off preference. The real key is validated on the server and exchanged for an HttpOnly, SameSite=Strict cookie.
-
-### 7. Disable logging and log out
-
-```js
-localStorage.removeItem("apiDebugLoggin");
+```javascript
+localStorage.getItem("apiDebugLogging"); // "enabled"
 ```
 
-The provider observes this setting and requests logout. Previously printed Console entries remain visible until you clear the console.
+Now reload or navigate your Next.js app to trigger server-side requests. Buffered recent calls (including calls made before authentication) and new calls appear in the Console.
 
-## When you don't see a server request
+**Warning:** The console command above can be seen in browser console history, and the key is temporarily present in localStorage before the provider reads it. Avoid reusing a real account password. This behavior is intended **only for a trusted local app** and cannot provide the secrecy of a password prompt.
 
-Next.js may wrap or replace the global `fetch` function after instrumentation. To log a specific server request, use the explicit fallback instead:
+To stop forwarding logs:
+
+```javascript
+localStorage.setItem("apiDebugLogging", "disabled");
+```
+
+The client logs out and stops polling. Existing Console entries remain until you clear the console.
+
+## Explicit fallback: `debugFetch()`
+
+Next.js may wrap or replace the global `fetch` function after `instrumentation.ts` runs. To reliably instrument a specific call within the supported Node environment, use:
 
 ```ts
 import { debugFetch } from "next-server-api-debugger/server";
 
-export async function getProducts() {
-  const res = await debugFetch(
-    "https://api.example.com/products",
-    { cache: "no-store" }
-  );
-
-  if (!res.ok) throw new Error("Products request failed");
-  return res.json();
-}
+const response = await debugFetch("https://api.example.test/products", {
+  method: "GET", cache: "no-store"
+});
+const products = await response.json();
 ```
 
-This code must execute in an **authenticated request context** in the Node.js runtime. Calls in background jobs, build-time static rendering, isolated workers, and contexts without a matching Next.js session cookie will not be forwarded to a browser session.
-
-### Example POST request
+POST example:
 
 ```ts
-import { debugFetch } from "next-server-api-debugger/server";
-
-const response = await debugFetch("https://api.example.com/orders", {
+const response = await debugFetch("https://api.example.test/orders", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ productId: 101, quantity: 2 })
 });
 ```
 
-Only JSON payloads within the configured size limit are previewed; binary, streaming, unsupported and oversized bodies are omitted or truncated.
+The original API request stays on the server. This does not instrument Axios, databases, Edge runtime, Next.js internal cache hits, or API traffic occurring in a different process.
 
-## Configuration reference
-
-### `registerServerDebugger(options)`
-
-| Option | Type | Default | Purpose |
-| --- | --- | --- | --- |
-| `captureBodies` | `boolean` | `false` | Attempt to capture small JSON request/response bodies |
-| `maxBodyBytes` | `number` | `8000` | Preview size threshold, capped at 65,536 bytes |
-
-### `<ApiDebugProvider />`
-
-| Prop | Type | Default | Purpose |
-| --- | --- | --- | --- |
-| `storageKey` | `string` | `"apiDebugLoggin"` | Browser-only on/off preference |
-| `pollIntervalMs` | `number` | `1500` | Polling interval, minimum 500 ms |
-| `children` | `ReactNode` | required | Existing application content |
-
-### Server exports
-
-| Export | Purpose |
-| --- | --- |
-| `registerServerDebugger` | Node runtime instrumentation |
-| `debugFetch` | Explicit fetch wrapper |
-| `debugSessionGET` | Check session |
-| `debugSessionPOST` | Authenticate private key |
-| `debugSessionDELETE` | Log out |
-| `debugEventsGET` | Poll current session's events |
-
-## How it works
+## How logs are delivered
 
 ```text
-Next.js server (Node.js)
-  └─ fetch / debugFetch
-       └─ attach sanitized event to authenticated request session
-            └─ GET /api/__server-api-debug/events (cookie protected)
-                 └─ ApiDebugProvider
-                      └─ Chrome/Edge DevTools Console
+Node.js fetch / explicit debugFetch
+  ├─ terminal: [Server API] METHOD URL → HTTP STATUS (DURATION)
+  └─ in-memory local-development ring buffer (latest 5,000)
+       └─ authenticated local /api/__server-api-debug/events
+            └─ ApiDebugProvider → browser DevTools Console
 ```
 
-The package does **not** convert server calls into client-side API calls. It mirrors limited debugging information, keeping original requests on the server. Browser Network tools may show the **debug polling request**, not the underlying server-to-server HTTP requests.
+The buffer can be overwritten under heavy traffic, and process restarts erase it. The browser polls in batches of 200, so an inactive browser may miss older events if the buffer fills. **No library can guarantee a browser console entry for every possible API call** across crashes, process restarts, network failures, alternative HTTP libraries or unsupported runtimes. The terminal fallback helps diagnose calls when browser forwarding is unavailable.
+
+## Options
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `registerServerDebugger({ captureBodies })` | `true` | Attempt to preview JSON bodies |
+| `registerServerDebugger({ maxBodyBytes })` | `8000` | Preview limit, maximum 65,536 bytes |
+| `<ApiDebugProvider storageKey />` | `apiDebugLogging` | Browser activation storage key |
+| `<ApiDebugProvider pollIntervalMs />` | `750` | Browser polling interval (minimum 500 ms) |
 
 ## Troubleshooting
 
-**`npm install` didn't ask for a key.** Run `npx next-server-api-debugger init` from the consuming app's root. Interactive npm lifecycle prompts are not reliable in CI or background installations.
+**Setup says key too short.** Check your installed version: `npm ls next-server-api-debugger`. Version 1.0.0/1.0.1 required 24+ characters. Upgrade to 1.0.2 and run `npx next-server-api-debugger init --reset`.
 
-**No login box appears.** Make sure `localStorage.setItem("apiDebugLoggin", "enabled")` was run on the correct local origin, reload the page, and check that `ApiDebugProvider` is in the root layout.
+**`npm install` did not prompt.** Run `npx next-server-api-debugger init` directly. npm installers do not reliably support interactive prompts.
 
-**"Debugger routes unavailable."** Ensure both `/api/__server-api-debug/session` and `/api/__server-api-debug/events` route handlers exist and your dev server has restarted.
+**No `apiDebugLogging` in localStorage.** Ensure `ApiDebugProvider` is mounted and reload the app; it initializes the setting to `disabled` on first client render. Installing an npm package cannot directly change browser storage.
 
-**"Incorrect private debugging key."** Check that you are using the original secret, not the saved hash. To reset, run `npx next-server-api-debugger init --reset`, then restart the app.
+**Key rejected.** The key must match the original custom key used in setup. If necessary rotate it using `init --reset`, and restart your dev server.
 
-**No API logs appear.** Trigger a server request after login; use `debugFetch` if global interception misses it. Server calls made before login or without the debug session will not be shown. Logging is not guaranteed for every Next.js rendering/cache mode.
+**No logs in the browser.** Confirm `localStorage.getItem("apiDebugLogging")` is `"enabled"`, both route handlers exist, and the server is running in development on localhost. Trigger a new server fetch. Check terminal output and use `debugFetch` if automatic interception does not capture the call.
 
-**I see a server API request in the Console but not the Network tab.** This is expected. The native Network tab cannot display outgoing requests that happened entirely on the server.
+**No response body.** Only small JSON responses can be previewed, and some bodies are omitted for safety or performance. Redaction is best-effort, not comprehensive.
 
-**I see "Not captured / empty" for a request or response.** Body capture is disabled by default or the content was not suitable for a JSON preview.
+**`npm audit` reports vulnerabilities.** Run `npm audit` to see which dependency introduces them. Do not blindly run `npm audit fix --force`, which can introduce breaking upgrades.
 
-**Can I enable this on my public production site?** No. The initial release intentionally disables the endpoints in `NODE_ENV=production` and has in-memory session/event storage unsuitable for serverless production.
+## Important security constraints
 
-## Security considerations
+- **Do not deploy this debugger to production** or expose local development servers to untrusted networks.
+- Debug routes return 404 when `NODE_ENV` is not `development` or the request hostname is not a loopback address.
+- Browser localStorage is readable by JavaScript. A 1-character or other short key is easy to guess; the hash in `.env.local` does not make a short key strong. Never reuse credentials.
+- The session is an HttpOnly, SameSite=Strict cookie and expires after 30 minutes. Login includes basic throttling.
+- Browser clients authenticated to the same local Node process can see the shared process-level buffer. **Do not process real sensitive user data** while using this utility.
+- The console and terminal may contain request/response data; common sensitive field names are redacted, but unknown sensitive fields may not be.
+- Production/serverless multi-instance aggregation, external telemetry, persistence and guaranteed delivery are out of scope.
 
-This project is for **trusted local development only**.
-
-- The installer's private key is project-specific. The original key is not committed or shipped; the consuming project stores a salted `scrypt` hash in `.env.local`.
-- Debug login requires a same-origin request and uses basic throttling. Successful login creates a 30-minute HttpOnly, SameSite=Strict session cookie.
-- Only events associated with the authenticated session are returned; there is no globally shared public event feed.
-- URL query values and JSON fields with common sensitive names are redacted on a **best-effort** basis. Unrecognized fields or values can still expose secrets or personal information.
-- Do **not** expose local dev servers publicly or debug real credentials, authentication tokens, financial information, or personal records.
-- JSON preview cloning can add overhead and may not be appropriate for streaming, binary, or large responses.
-- Never use this tool as a substitute for a production observability platform.
-
-## Develop and contribute
-
-Source: [GitHub repository](https://github.com/kavinkumar025/next-server-api-debugger)
-
-The actual npm package is stored inside the repository's `next-server-api-debugger/` subdirectory:
+## Development
 
 ```bash
 git clone https://github.com/kavinkumar025/next-server-api-debugger.git
@@ -316,8 +262,6 @@ npm test
 npm pack --dry-run
 ```
 
-The repository includes unit tests and a reference integration in `examples/next16-app/`. For bugs or documentation requests, [open an issue](https://github.com/kavinkumar025/next-server-api-debugger/issues).
+See [the GitHub repository](https://github.com/kavinkumar025/next-server-api-debugger), [open an issue](https://github.com/kavinkumar025/next-server-api-debugger/issues), and [the npm package](https://www.npmjs.com/package/next-server-api-debugger).
 
-## License
-
-MIT © [kavinkumar025](https://github.com/kavinkumar025).
+MIT © kavinkumar025.

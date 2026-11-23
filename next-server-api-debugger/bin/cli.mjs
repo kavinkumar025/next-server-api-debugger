@@ -2,13 +2,8 @@
 import { randomBytes, scryptSync } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync, appendFileSync, chmodSync } from "node:fs";
 import { resolve } from "node:path";
-import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 
-async function ask(question) {
-  const rl = createInterface({ input:stdin, output:stdout });
-  try { return await rl.question(question); } finally { rl.close(); }
-}
 function hidden(question) {
   if (!stdin.isTTY || !stdout.isTTY || !stdin.setRawMode)
     throw new Error("A real interactive terminal is required.");
@@ -62,16 +57,10 @@ async function main() {
     return;
   }
   console.log("\nNext Server API Debugger — private key setup\n");
-  const choice=(await ask("Choose key: [1] Custom (default) / [2] Generate: ")).trim();
-  let key;
-  if(choice==="2") {
-    key=randomBytes(32).toString("base64url");
-    console.log("Generated key (displayed once, save it privately): "+key);
-  } else {
-    key=await hidden("Enter a private key (hidden; 24+ characters): ");
-  }
-  if(key.length<24 || key.length>1024 || /[\r\n]/.test(key))
-    throw new Error("Key must be 24–1024 characters with no newlines.");
+  // One simple prompt — no numeric menu or 24-character minimum.
+  const key=await hidden("Choose your debug key (1-24 characters, hidden): ");
+  if(key.length<1 || key.length>24 || /[\r\n]/.test(key))
+    throw new Error("Key must contain 1–24 characters, with no newlines.");
   const salt=randomBytes(16);
   const hash=scryptSync(key,salt,64);
   const row="NEXT_SERVER_API_DEBUGGER_KEY_HASH="+salt.toString("hex")+":"+hash.toString("hex");

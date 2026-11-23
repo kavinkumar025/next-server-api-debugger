@@ -7,6 +7,8 @@ import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 const COOKIE = "__next_server_api_debug";
 const DEBUG_ROUTE = "/api/__server-api-debug/";
 const TTL = 30 * 60 * 1000;
+const MAX_LOGS = 5000;
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 const STORE_KEY = Symbol.for("next-server-api-debugger.store.v1");
 const FETCH_KEY = Symbol.for("next-server-api-debugger.fetch.v1");
 const SECRET_NAME = "NEXT_SERVER_API_DEBUGGER_KEY_HASH";
@@ -29,20 +31,21 @@ export type ServerDebuggerOptions = {
   /** Maximum JSON body preview, capped to 64 KiB. */
   maxBodyBytes?: number;
 };
-type Session = { expires: number; logs: ApiDebugEvent[] };
+type Session = { expires: number };
 type Attempt = { count: number; until: number };
 type Store = {
   sessions: Map<string, Session>;
   attempts: Map<string, Attempt>;
   nextId: number;
+  logs: ApiDebugEvent[];
   options: ServerDebuggerOptions;
 };
 type FetchWithMarker = typeof fetch & Record<symbol, boolean | undefined>;
 const globalStore = globalThis as typeof globalThis & Record<symbol, Store | undefined>;
 function store(): Store {
   return globalStore[STORE_KEY] ??= {
-    sessions: new Map(), attempts: new Map(), nextId: 0,
-    options: { captureBodies: false, maxBodyBytes: 8000 }
+    sessions: new Map(), attempts: new Map(), nextId: 0, logs: [],
+    options: { captureBodies: true, maxBodyBytes: 8000 }
   };
 }
 function enabled(): boolean {
@@ -51,7 +54,7 @@ function enabled(): boolean {
 }
 function matchesKey(key: string): boolean {
   const secret = process.env[SECRET_NAME] ?? "";
-  if (key.length < 24 || key.length > 1024 || !/^[0-9a-f]{32}:[0-9a-f]{128}$/i.test(secret)) return false;
+  if (key.length < 1 || key.length > 24 || !/^[0-9a-f]{32}:[0-9a-f]{128}$/i.test(secret)) return false;
   const [salt, digest] = secret.split(":");
   const actual = scryptSync(key, Buffer.from(salt, "hex"), 64);
   return timingSafeEqual(actual, Buffer.from(digest, "hex"));
@@ -74,6 +77,10 @@ function response(body: unknown, status=200, headers: Record<string,string>={}):
     status,
     headers: { "Cache-Control":"private, no-store", "X-Content-Type-Options":"nosniff", ...headers }
   });
+}
+function localRequest(req: Request): boolean {
+  try { return LOCAL_HOSTS.has(new URL(req.url).hostname.toLowerCase()); }
+  catch { return false; }
 }
 function sameOrigin(req: Request): boolean {
   const origin = req.headers.get("origin");
@@ -134,22 +141,21 @@ async function jsonPreview(source: Request | Response, limit: number): Promise<u
   } catch { return "[body unavailable]"; }
   finally { void reader.cancel().catch(() => {}); }
 }
-function addLog(session: Session, event: Omit<ApiDebugEvent,"id"|"time">) {
+function addLog(event: Omit<ApiDebugEvent,"id"|"time">): void {
   const s = store();
-  session.logs.push({ ...event, id: ++s.nextId, time: new Date().toISOString() });
-  if (session.logs.length > 200) session.logs.splice(0, session.logs.length-200);
-}
-async function currentSession(): Promise<Session | undefined> {
-  try {
-    const { cookies } = await import("next/headers");
-    return active((await cookies()).get(COOKIE)?.value);
-  } catch { return undefined; }
+  const entry: ApiDebugEvent = { ...event, id: ++s.nextId, time: new Date().toISOString() };
+  s.logs.push(entry);
+  if (s.logs.length > MAX_LOGS) s.logs.splice(0, s.logs.length - MAX_LOGS);
+  const status = entry.status === 0 ? "NETWORK ERROR" : "HTTP " + entry.status;
+  // Server-side fallback: if browser transport isn't ready, developers still see the event.
+  console.info("[Server API]", entry.method, entry.url, "→", status, "(" + entry.durationMs + "ms)");
+  if (entry.requestBody !== undefined) console.info("  Request:", entry.requestBody);
+  if (entry.responseBody !== undefined) console.info("  Response:", entry.responseBody);
+  if (entry.error) console.error("  Error:", entry.error);
 }
 async function capture(original: typeof fetch, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const raw = requestUrl(input);
   if (!enabled() || raw.includes(DEBUG_ROUTE)) return original(input, init);
-  const session = await currentSession();
-  if (!session) return original(input, init);
   const method = (init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
   const opts = store().options;
   const limit = Math.min(Math.max(opts.maxBodyBytes ?? 8000, 100), 65536);
@@ -166,7 +172,7 @@ async function capture(original: typeof fetch, input: RequestInfo | URL, init?: 
   try {
     const res = await original(input, init);
     const responseBody = opts.captureBodies ? await jsonPreview(res, limit) : undefined;
-    addLog(session, {
+    addLog({
       method, url: safeUrl(raw), status: res.status,
       durationMs: Math.round(performance.now()-started), requestBody, responseBody
     });
@@ -187,7 +193,7 @@ export function registerServerDebugger(options: ServerDebuggerOptions = {}): voi
       console.warn("[API Debugger] Run npx next-server-api-debugger init in your Next.js project.");
     return;
   }
-  store().options = { captureBodies: options.captureBodies ?? false, maxBodyBytes: options.maxBodyBytes ?? 8000 };
+  store().options = { captureBodies: options.captureBodies ?? true, maxBodyBytes: options.maxBodyBytes ?? 8000 };
   const current = globalThis.fetch as FetchWithMarker;
   if (current[FETCH_KEY]) return;
   const original = globalThis.fetch.bind(globalThis);
@@ -202,12 +208,12 @@ export function debugFetch(input: RequestInfo | URL, init?: RequestInit): Promis
 }
 /** app/api/__server-api-debug/session/route.ts - GET */
 export async function debugSessionGET(request: Request): Promise<Response> {
-  if (!enabled()) return response({ error:"Debugger is disabled" },404);
+  if (!enabled() || !localRequest(request)) return response({ error:"Debugger is disabled" },404);
   return response({ authenticated: Boolean(active(cookieToken(request))) });
 }
 /** app/api/__server-api-debug/session/route.ts - POST */
 export async function debugSessionPOST(request: Request): Promise<Response> {
-  if (!enabled()) return response({ error:"Debugger is disabled" },404);
+  if (!enabled() || !localRequest(request)) return response({ error:"Debugger is disabled" },404);
   if (!sameOrigin(request)) return response({ error:"Invalid origin" },403);
   if (!/application\/json/i.test(request.headers.get("content-type") ?? "")) return response({ error:"JSON required" },415);
   if (Number(request.headers.get("content-length") ?? 0) > 2048) return response({ error:"Request too large" },413);
@@ -227,7 +233,7 @@ export async function debugSessionPOST(request: Request): Promise<Response> {
   }
   store().attempts.delete(source);
   const token = randomBytes(32).toString("base64url");
-  store().sessions.set(token, { expires: Date.now()+TTL, logs: [] });
+  store().sessions.set(token, { expires: Date.now()+TTL });
   const secure = new URL(request.url).protocol === "https:" ? "; Secure" : "";
   return response({ authenticated:true },200,{
     "Set-Cookie": COOKIE + "=" + token + "; HttpOnly; SameSite=Strict; Path=/; Max-Age=1800" + secure
@@ -235,7 +241,7 @@ export async function debugSessionPOST(request: Request): Promise<Response> {
 }
 /** app/api/__server-api-debug/session/route.ts - DELETE */
 export async function debugSessionDELETE(request: Request): Promise<Response> {
-  if (!enabled()) return response({ error:"Debugger is disabled" },404);
+  if (!enabled() || !localRequest(request)) return response({ error:"Debugger is disabled" },404);
   if (!sameOrigin(request)) return response({ error:"Invalid origin" },403);
   const token = cookieToken(request);
   if (token) store().sessions.delete(token);
@@ -246,10 +252,10 @@ export async function debugSessionDELETE(request: Request): Promise<Response> {
 }
 /** app/api/__server-api-debug/events/route.ts - GET */
 export async function debugEventsGET(request: Request): Promise<Response> {
-  if (!enabled()) return response({ error:"Debugger is disabled" },404);
-  const session = active(cookieToken(request));
-  if (!session) return response({ error:"Session expired; sign in again" },401);
+  if (!enabled() || !localRequest(request)) return response({ error:"Debugger is disabled" },404);
+  if (!active(cookieToken(request))) return response({ error:"Session expired; sign in again" },401);
   const since = Number(new URL(request.url).searchParams.get("since") ?? "0");
   if (!Number.isSafeInteger(since) || since < 0) return response({ error:"Invalid cursor" },400);
-  return response({ events: session.logs.filter(item => item.id > since).slice(0,200) });
+  // Shared local development ring buffer: captures requests before browser authentication.
+  return response({ events: store().logs.filter(item => item.id > since).slice(0,200) });
 }

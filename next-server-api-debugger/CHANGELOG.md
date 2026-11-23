@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.2 — Simple localStorage activation and more reliable logs
+
+- Installer now asks for a single custom key, accepting 1–24 characters.
+- Browser provider uses `apiDebugLogging` by default, initializes it to `disabled`, and accepts a temporary matching key to authenticate.
+- The key is removed from localStorage immediately when processed and replaced with `enabled` only after successful validation.
+- Every supported Node `fetch` event in local development enters a bounded 5,000-event replay buffer and prints to the **server terminal** as fallback, even if no browser is authenticated yet.
+- Authenticated local browsers can replay buffered API calls. API endpoints reject non-loopback hosts; production remains disabled.
+- Key stored in localStorage even briefly is readable by browser scripts. Use only with synthetic local development data.
+- No guarantee of interception across all Next.js fetch implementations, external HTTP libraries, or process restarts.
+
 ## 1.0.1 — Documentation and discoverability
 
 - Expanded npm README with end-to-end Next.js 16 setup, actual exports, configuration, and Console examples.
