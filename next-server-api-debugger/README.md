@@ -25,7 +25,7 @@ Open your browser Console to inspect **GET / POST / PUT / PATCH / DELETE**, requ
 
 **Note:** These are sample values. Native browser Network panels do not display server-to-server traffic; this package forwards debugging events into the **Console**.
 
-## Features (1.0.2)
+## Features (1.0.3)
 
 - Easy one-question setup: custom developer key containing **1–24 characters**. A short key (for example `kavin`) is accepted.
 - The client provider initializes `localStorage.apiDebugLogging` to **`disabled`** when it first loads. npm installation itself cannot write into a user's browser storage.
@@ -45,7 +45,7 @@ npm install next-server-api-debugger
 npx next-server-api-debugger init
 ```
 
-**Installation prompt (1.0.2):**
+**Installation prompt (1.0.3):**
 
 ```text
 Next Server API Debugger — private key setup
@@ -70,6 +70,39 @@ npm install --foreground-scripts next-server-api-debugger
 ```
 
 npm lifecycle scripts may not have an interactive terminal. The explicit `init` command is the reliable fallback.
+
+## Team handover and changing the debug key
+
+**What if the developer who configured the key leaves the organization?**
+
+Each Next.js project stores only the `NEXT_SERVER_API_DEBUGGER_KEY_HASH` value in its own `.env.local`. It is a **one-way salted hash**, so the original key **cannot be recovered or displayed** by the npm package. Reinstalling the npm package does not recover or reset the key because npm does not delete `.env.local`.
+
+For a shared development project, give the key to authorized team members through your organization's approved password manager or secret-sharing system. Do not commit it to Git or put it in source code or a README. Different developers working on separate machines do not automatically share `.env.local`.
+
+To check whether a key has been configured **on the current machine** (without printing any secret):
+
+```bash
+npx next-server-api-debugger status
+```
+
+When a new developer runs the normal setup command on a project that **already has a hash**, it explains the existing configuration and offers a safe replacement:
+
+```text
+A debugging key is already configured.
+For safety, the original key cannot be shown because only a salted hash was stored.
+Ask your team administrator or password manager for the original key.
+Replace the current debugging key now? [y/N]:
+```
+
+Choose **N** to retain the existing key, or **Y** to enter a new key (1–24 characters). To skip the question and go straight to rotation:
+
+```bash
+npx next-server-api-debugger init --reset
+```
+
+After changing the key, restart the Next.js development server. Older keys will no longer authenticate new sessions; active debug sessions may remain valid until logout or expiry if you do not restart the server. Inform the rest of your team when rotating a shared key.
+
+**Uninstalling and reinstalling is not required or recommended for changing the key.** The reset command is the intended key-rotation mechanism.
 
 ## Next.js integration
 

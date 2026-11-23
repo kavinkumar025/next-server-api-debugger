@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.3 — Team handover and key-rotation guidance
+
+- Added `npx next-server-api-debugger status` to verify whether a key is configured locally without disclosing secrets.
+- Running `init` with an existing key explains why the original key cannot be recovered and offers interactive rotation.
+- Existing users can also rotate with `init --reset`, without uninstalling or reinstalling npm.
+- Added team-handover guidance: store and share developer keys only through approved organizational secret management.
+- No changes to runtime API interception or browser transport.
+
 ## 1.0.2 — Simple localStorage activation and more reliable logs
 
 - Installer now asks for a single custom key, accepting 1–24 characters.

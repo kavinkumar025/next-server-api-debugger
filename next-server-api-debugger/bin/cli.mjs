@@ -3,6 +3,8 @@ import { randomBytes, scryptSync } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync, appendFileSync, chmodSync } from "node:fs";
 import { resolve } from "node:path";
 import { stdin, stdout } from "node:process";
+import { createInterface } from "node:readline/promises";
+
 
 function hidden(question) {
   if (!stdin.isTTY || !stdout.isTTY || !stdin.setRawMode)
@@ -32,13 +34,10 @@ function hidden(question) {
   });
 }
 async function main() {
-  if (process.argv[2] !== "init") {
-    console.log("Usage: next-server-api-debugger init [--reset]");
-    process.exitCode=1;
-    return;
-  }
-  if (!stdin.isTTY || !stdout.isTTY) {
-    console.log("No interactive terminal. Run npx next-server-api-debugger init in your Next.js app.");
+  const action = process.argv[2] || "init";
+  if (!["init", "status"].includes(action)) {
+    console.log("Usage: next-server-api-debugger init [--reset] | status");
+    process.exitCode = 1;
     return;
   }
   const dir=process.env.NEXT_SERVER_API_DEBUGGER_PROJECT_DIR || process.cwd();
@@ -52,9 +51,32 @@ async function main() {
   const envPath=resolve(dir,".env.local");
   let env=existsSync(envPath) ? readFileSync(envPath,"utf8") : "";
   const exists=/^NEXT_SERVER_API_DEBUGGER_KEY_HASH\s*=/m.test(env);
-  if(exists && !process.argv.includes("--reset")) {
-    console.log("Key is configured. Run npx next-server-api-debugger init --reset to rotate it.");
+  if (action === "status") {
+    console.log(exists
+      ? "Debug key configured in this application's .env.local."
+      : "No debug key found in this application's .env.local.");
+    if (exists) {
+      console.log("The original key cannot be displayed: only its salted hash is stored.");
+      console.log("Ask your organization for the shared key or run: npx next-server-api-debugger init --reset");
+    }
     return;
+  }
+  if (!stdin.isTTY || !stdout.isTTY) {
+    console.log("Interactive terminal needed. Run npx next-server-api-debugger init in your Next.js app.");
+    return;
+  }
+  if (exists && !process.argv.includes("--reset")) {
+    console.log("A debugging key is already configured.");
+    console.log("For safety, the original key cannot be shown because only a salted hash was stored.");
+    console.log("Ask your team administrator or password manager for the original key.");
+    const rl = createInterface({ input: stdin, output: stdout });
+    let choice;
+    try { choice = (await rl.question("Replace the current debugging key now? [y/N]: ")).trim().toLowerCase(); }
+    finally { rl.close(); }
+    if (choice !== "y" && choice !== "yes") {
+      console.log("Existing key preserved. No changes made.");
+      return;
+    }
   }
   console.log("\nNext Server API Debugger — private key setup\n");
   // One simple prompt — no numeric menu or 24-character minimum.
@@ -73,6 +95,7 @@ async function main() {
   if(!ignore.split(/\r?\n/).some(x=>x.trim()===".env.local" || x.trim()===".env*"))
     appendFileSync(ignorePath,(ignore && !ignore.endsWith("\n") ? "\n":"")+".env.local\n");
   console.log("✔ Salted key hash saved in .env.local (original key not saved)");
+  if (exists) console.log("✔ Previous key replaced. Restart your Next.js dev server to apply the change.");
   console.log("✔ Debug secrets excluded from Git");
 }
 main().catch(err=> { console.error("Setup failed:",err.message); process.exitCode=1; });
