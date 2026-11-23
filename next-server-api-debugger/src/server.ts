@@ -178,7 +178,7 @@ async function capture(original: typeof fetch, input: RequestInfo | URL, init?: 
     });
     return res;
   } catch (err) {
-    addLog(session, {
+    addLog({
       method, url: safeUrl(raw), status: 0,
       durationMs: Math.round(performance.now()-started), requestBody,
       error: "Request failed before receiving a response"
