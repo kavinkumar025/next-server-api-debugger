@@ -1,9 +1,19 @@
 {
   "name": "next-server-api-debugger",
-  "version": "1.0.0",
-  "description": "Development-only browser console debugging for Next.js server-side fetch calls",
+  "version": "1.0.1",
+  "description": "Inspect Next.js server-side fetch requests and responses in the browser console during development",
   "license": "MIT",
   "type": "module",
+  "author": "kavinkumar025",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kavinkumar025/next-server-api-debugger.git",
+    "directory": "next-server-api-debugger"
+  },
+  "homepage": "https://github.com/kavinkumar025/next-server-api-debugger/tree/main/next-server-api-debugger#readme",
+  "bugs": {
+    "url": "https://github.com/kavinkumar025/next-server-api-debugger/issues"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -38,13 +48,19 @@
   },
   "keywords": [
     "nextjs",
-    "debug",
-    "server",
-    "api",
+    "next.js",
+    "api-debugger",
+    "server-side",
+    "server-components",
+    "app-router",
+    "ssr",
     "fetch",
-    "devtools"
+    "http-logging",
+    "request-logging",
+    "response-logging",
+    "devtools",
+    "debugging"
   ],
-  "author": "kavinkumar025",
   "peerDependencies": {
     "next": "^16.0.0",
     "react": "^19.0.0"
