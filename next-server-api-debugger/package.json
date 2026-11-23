@@ -1,9 +1,9 @@
 {
   "name": "next-server-api-debugger",
   "version": "1.0.0",
-  "description": "Debug Next.js server-side API requests from the browser",
-  "type": "module",
+  "description": "Development-only browser console debugging for Next.js server-side fetch calls",
   "license": "MIT",
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -20,23 +20,29 @@
       "default": "./dist/client.js"
     }
   },
+  "bin": {
+    "next-server-api-debugger": "./bin/cli.mjs"
+  },
   "files": [
     "dist",
+    "bin",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup src/index.ts src/server.ts src/client.tsx --format esm --dts --clean",
+    "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run typecheck && npm run build"
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "prepublishOnly": "npm run typecheck && npm test",
+    "postinstall": "node bin/postinstall.mjs"
   },
   "keywords": [
     "nextjs",
-    "api",
-    "debugger",
+    "debug",
     "server",
+    "api",
     "fetch",
-    "network"
+    "devtools"
   ],
   "author": "kavinkumar025",
   "peerDependencies": {
@@ -44,12 +50,12 @@
     "react": "^19.0.0"
   },
   "devDependencies": {
-    "@types/node": "^26.6.6",
-    "@types/react": "^19.3.0",
-    "next": "^16.4.6",
-    "react": "^19.3.1",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "next": "^16.0.0",
+    "react": "^19.0.0",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3"
+    "typescript": "~5.9.3"
   },
   "publishConfig": {
     "access": "public"

@@ -1,14 +1,16 @@
 # next-server-api-debugger
 
-A Next.js server API debugging package in early development. The package source is in [`next-server-api-debugger`](./next-server-api-debugger).
+Development-only browser console inspection for Next.js server-side fetch calls.
 
-## Development
+Package source and complete documentation: [next-server-api-debugger/](./next-server-api-debugger/README.md).
 
-```sh
-cd next-server-api-debugger
-npm ci
+From the package folder:
+
+```bash
+npm install
 npm run typecheck
-npm run build
+npm test
+npm pack --dry-run
 ```
 
-The package currently exports `logServerApi`, `PACKAGE_NAME`, and `VERSION` from its main entry point, and `ApiDebugProvider` from its client entry point.
+The private developer key is generated per consuming Next.js application with `npx next-server-api-debugger init` or an attempted foreground install prompt. The original secret is never committed or shipped in the npm bundle. This package is development-only; it does not enable production API logging.
