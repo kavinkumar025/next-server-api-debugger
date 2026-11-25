@@ -20,5 +20,7 @@ jobs:
         run: npm run typecheck
       - name: Tests
         run: npm test
+      - name: Next.js runtime smoke test (session and events routes)
+        run: node tests/next-runtime-smoke.mjs
       - name: Inspect package
         run: npm pack --dry-run
