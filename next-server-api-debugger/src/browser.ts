@@ -64,10 +64,10 @@ export function startBrowserDebugger(): void {
         return;
       }
       if (!response.ok || result.authenticated !== true) {
-        write("disabled");
+        write("error:"+response.status);
         console.error("[API Debugger] Key verification failed ("+response.status+"): "+
           (result.error || "Debug session not accepted")+
-          ". Check your key and run npx next-server-api-debugger status.");
+          ". Check your key and run npx next-server-api-debugger doctor.");
         return;
       }
       cursor = 0;
@@ -75,7 +75,7 @@ export function startBrowserDebugger(): void {
       write("enabled");
       console.info("[API Debugger] Connected. Server requests and responses will appear below.");
     } catch {
-      if (read() === "connecting") write("disabled");
+      if (read() === "connecting") write("error:network");
       console.error("[API Debugger] Unable to verify key. Check your dev server and debugger routes.");
     } finally {
       pending = false;
@@ -89,12 +89,12 @@ export function startBrowserDebugger(): void {
       if (read() !== "enabled") return;
       if (value.authenticated) authorized = true;
       else {
-        write("disabled");
+        write("error:session-expired");
         console.info("[API Debugger] No active session. Enter your configured key in apiDebugLogging.");
       }
     } catch {
       if (read() === "enabled") {
-        write("disabled");
+        write("error:network");
         console.warn("[API Debugger] Debug session unavailable. Check your local Next.js setup.");
       }
     } finally { pending = false; }
@@ -111,6 +111,9 @@ export function startBrowserDebugger(): void {
       if (authorized) void logout();
       return;
     }
+    // Leave failed authentication visible in the same Local Storage key.
+    // To retry, replace the error state with the configured developer key.
+    if (value.startsWith("error:")) return;
     if (value === "connecting") {
       // A reload may interrupt a previous login attempt.
       write("disabled");
@@ -135,7 +138,7 @@ export function startBrowserDebugger(): void {
       const response=await fetch(BASE+"/events?since="+cursor,REQUEST);
       if(response.status===401) {
         authorized=false;
-        write("disabled");
+        write("error:session-expired");
         console.warn("[API Debugger] Session expired. Enter your key again.");
         return;
       }

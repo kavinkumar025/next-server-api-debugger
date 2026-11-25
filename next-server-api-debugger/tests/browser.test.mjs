@@ -50,7 +50,7 @@ test("storage key shows connecting then enabled after successful authentication"
     assert.equal(read(),"enabled");
   });
 });
-test("incorrect key changes connecting to disabled with no plaintext retained",async()=>{
+test("incorrect key shows visible failure without retaining plaintext",async()=>{
   await withBrowser(async ({sync,read})=>{
     globalThis.fetch = async ()=>({
       ok:false,status:401,json:async()=>({error:"Incorrect private debugging key"})
@@ -59,7 +59,7 @@ test("incorrect key changes connecting to disabled with no plaintext retained",a
     sync();
     assert.equal(read(),"connecting");
     await flush();
-    assert.equal(read(),"disabled");
+    assert.equal(read(),"error:401");
   });
 });
 test("disabling during authentication does not re-enable logging",async()=>{
@@ -79,7 +79,7 @@ test("disabling during authentication does not re-enable logging",async()=>{
     assert.equal(read(),"disabled");
   });
 });
-test("enabled without a valid server session reverts to disabled",async()=>{
+test("enabled without a valid server session shows a visible error",async()=>{
   await withBrowser(async ({sync,read})=>{
     globalThis.fetch = async ()=>({
       ok:true,status:200,json:async()=>({authenticated:false})
@@ -87,6 +87,6 @@ test("enabled without a valid server session reverts to disabled",async()=>{
     localStorage.setItem("apiDebugLogging","enabled");
     sync();
     await flush();
-    assert.equal(read(),"disabled");
+    assert.equal(read(),"error:session-expired");
   });
 });

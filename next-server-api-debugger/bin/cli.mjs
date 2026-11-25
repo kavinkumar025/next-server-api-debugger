@@ -36,8 +36,8 @@ function hidden(question) {
 }
 async function main() {
   const action = process.argv[2] || "init";
-  if (!["init", "status"].includes(action)) {
-    console.log("Usage: next-server-api-debugger init [--reset] | status");
+  if (!["init", "status", "doctor"].includes(action)) {
+    console.log("Usage: next-server-api-debugger init [--reset] | status | doctor");
     process.exitCode = 1;
     return;
   }
@@ -52,7 +52,7 @@ async function main() {
   const envPath=resolve(dir,".env.local");
   let env=existsSync(envPath) ? readFileSync(envPath,"utf8") : "";
   const exists=/^NEXT_SERVER_API_DEBUGGER_KEY_HASH\s*=/m.test(env);
-  if (action === "status") {
+  if (action === "status" || action === "doctor") {
     const wiring = integrationStatus(dir);
     console.log(wiring.supported
       ? (wiring.configured ? "Next.js debugger auto-integration: ready." : "Next.js debugger auto-integration: incomplete.")
@@ -63,6 +63,30 @@ async function main() {
     if (exists) {
       console.log("The original key cannot be displayed: only its salted hash is stored.");
       console.log("Ask your organization for the shared key or run: npx next-server-api-debugger init --reset");
+    }
+    if (action === "doctor") {
+      const source=process.env.NEXT_SERVER_API_DEBUGGER_DOCTOR_URL || "http://localhost:3000";
+      const parsed=new URL(source);
+      if (!["localhost","127.0.0.1","[::1]","::1"].includes(parsed.hostname) ||
+          !["http:","https:"].includes(parsed.protocol))
+        throw new Error("Doctor only checks a loopback HTTP(S) server.");
+      const target=new URL("/api/next-server-api-debugger/session",parsed);
+      try {
+        const res=await fetch(target,{cache:"no-store",signal:AbortSignal.timeout(3000)});
+        const body=await res.json().catch(()=>({}));
+        if(res.ok && body.ready===true)
+          console.log("Runtime: debugger endpoint READY on "+target.origin+".");
+        else if(res.ok)
+          console.log("Runtime: endpoint returned HTTP 200, but no ready flag. Update the installed debugger package.");
+        else
+          console.log("Runtime: endpoint HTTP "+res.status+" ("+(body.error || "unavailable")+
+            "). Restart npm run dev after changing .env.local; never use npm start for development debugging.");
+      } catch {
+        console.log("Runtime: cannot reach "+target.origin+". Start the app with npm run dev, then rerun doctor.");
+      }
+      if(exists && !/^[0-9a-f]{32}:[0-9a-f]{128}$/i.test(
+          (env.match(/^NEXT_SERVER_API_DEBUGGER_KEY_HASH\s*=\s*(.*)$/m)||[])[1]||""))
+        console.log("Runtime: malformed key hash. Run init --reset.");
     }
     return;
   }

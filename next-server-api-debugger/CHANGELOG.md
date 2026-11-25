@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.3 — Authentication diagnostic improvements
+
+- Failed browser login now displays `error:401`, `error:403`, `error:404`, or `error:network` in the same `apiDebugLogging` Local Storage key instead of silently reverting to disabled.
+- New `npx next-server-api-debugger doctor` checks the running localhost session endpoint.
+- Accept a loopback Host alias when Next.js internally rewrites the request hostname, while rejecting cross-site requests.
+- Regression tests for the login state and local origin handling.
+
 ## 1.1.2 — Clear browser Local Storage activation status
 
 - Show `connecting` while verifying a key entered in `apiDebugLogging`, rather than immediately reverting to `disabled`.

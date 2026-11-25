@@ -87,3 +87,20 @@ test("restricts debugger endpoints to loopback during development", async () => 
   });
   assert.equal((await debugSessionPOST(request)).status, 404);
 });
+
+test("local Host header handles loopback alias used by Next.js internal routing", async () => {
+  const req = new Request("http://127.0.0.1:3000/api/next-server-api-debugger/session", {
+    method: "POST", headers: {
+      origin: "http://localhost:3000", host: "localhost:3000", "Content-Type": "application/json"
+    }, body: JSON.stringify({key})
+  });
+  assert.equal((await debugSessionPOST(req)).status,200);
+});
+test("loopback Host fallback rejects a mismatched port", async () => {
+  const req = new Request("http://127.0.0.1:3000/api/next-server-api-debugger/session", {
+    method: "POST", headers: {
+      origin: "http://localhost:3001", host: "localhost:3000", "Content-Type": "application/json"
+    }, body: JSON.stringify({key})
+  });
+  assert.equal((await debugSessionPOST(req)).status,403);
+});

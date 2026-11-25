@@ -85,8 +85,18 @@ function localRequest(req: Request): boolean {
 function sameOrigin(req: Request): boolean {
   const origin = req.headers.get("origin");
   if (!origin) return false;
-  try { return new URL(origin).origin === new URL(req.url).origin; }
-  catch { return false; }
+  try {
+    const caller = new URL(origin);
+    const internal = new URL(req.url);
+    if (caller.origin === internal.origin) return true;
+    // Next.js can use an internal loopback address while preserving the public Host.
+    // Permit this only for same-scheme local requests with matching Host.
+    const host = req.headers.get("host");
+    return Boolean(host) && LOCAL_HOSTS.has(caller.hostname.toLowerCase()) &&
+      LOCAL_HOSTS.has(internal.hostname.toLowerCase()) &&
+      caller.protocol === internal.protocol &&
+      caller.host.toLowerCase() === host!.toLowerCase();
+  } catch { return false; }
 }
 function safe(value: unknown, depth=0): unknown {
   if (depth > 5) return "[truncated]";
@@ -209,7 +219,7 @@ export function debugFetch(input: RequestInfo | URL, init?: RequestInit): Promis
 /** app/api/next-server-api-debugger/session/route.ts - GET */
 export async function debugSessionGET(request: Request): Promise<Response> {
   if (!enabled() || !localRequest(request)) return response({ error:"Debugger is disabled" },404);
-  return response({ authenticated: Boolean(active(cookieToken(request))) });
+  return response({ authenticated: Boolean(active(cookieToken(request))), ready: true });
 }
 /** app/api/next-server-api-debugger/session/route.ts - POST */
 export async function debugSessionPOST(request: Request): Promise<Response> {

@@ -21,6 +21,6 @@ The package generates the Next.js instrumentation hooks and protected routes. **
 
 Use `npx next-server-api-debugger status` to check setup or `npx next-server-api-debugger init --reset` to rotate the key.
 
-**Development only; supported fetch interception is best-effort.** Version 1.1.2 improves browser Local Storage key activation feedback; version 1.1.1 fixed Next.js 16 Cache Components build compatibility for generated API routes.
+**Development only; supported fetch interception is best-effort.** Version 1.1.3 adds authentication diagnostics and visible Local Storage failure codes; version 1.1.2 improves key activation feedback; version 1.1.1 fixed Next.js 16 Cache Components build compatibility for generated API routes.
 
 [Full package documentation](./next-server-api-debugger/README.md) · [Issues](https://github.com/kavinkumar025/next-server-api-debugger/issues).
