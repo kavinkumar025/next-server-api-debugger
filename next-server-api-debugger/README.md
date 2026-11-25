@@ -84,6 +84,8 @@ The package uses Next.js server and client instrumentation hooks and App Router 
 
 JavaScript (`.js`) and `src/app` applications are also supported.
 
+**Next.js 16 Cache Components compatibility:** Generated debugger API routes intentionally do **not** export `runtime` or `dynamic`. If you installed version 1.1.0 and encountered a Turbopack build failure with `cacheComponents`, upgrade to 1.1.1 and run `npx next-server-api-debugger init`. The installer will remove those two legacy exports from package-managed routes. You can also remove them manually; there is no need to disable Cache Components.
+
 **Existing user code is preserved:**
 
 - Existing server instrumentation is moved to `instrumentation.next-server-api-debugger-original.ts` (or `.js`), and the generated wrapper runs the existing `register()` function and re-exports other functions such as `onRequestError`.
@@ -146,6 +148,8 @@ The server also prints captured events to its own terminal as a fallback, even b
 **No logs in browser.** Check `localStorage.getItem("apiDebugLogging")` is `"enabled"`, restart `npm run dev` after setup, and navigate to a page that actually makes server-side requests. Check the terminal for `[Server API]`. Use `debugFetch` for calls Next.js does not automatically expose.
 
 **The installer reports an API route conflict.** Your app already owns one of the generated routes. The installer refuses to overwrite it. Resolve the conflict, then run `init` again.
+
+**`next build` fails with `cacheComponents` and `runtime`/`dynamic` errors in debugger routes.** Version 1.1.0 generated incompatible exports. Upgrade to 1.1.1 and run `npx next-server-api-debugger init` to repair both package-generated routes, then run `npm run build` again.
 
 **Existing integration looks incomplete.** Run `npx next-server-api-debugger status`, then `npx next-server-api-debugger init` to repair missing hooks.
 

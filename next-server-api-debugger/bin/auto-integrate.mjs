@@ -6,16 +6,12 @@ const BROWSER_IMPORT = 'import "next-server-api-debugger/browser";';
 const ROUTE_SESSION = [
   "// " + MARKER,
   'import { debugSessionGET, debugSessionPOST, debugSessionDELETE } from "next-server-api-debugger/server";',
-  'export const runtime = "nodejs";',
-  'export const dynamic = "force-dynamic";',
   'export { debugSessionGET as GET, debugSessionPOST as POST, debugSessionDELETE as DELETE };',
   ""
 ].join("\n");
 const ROUTE_EVENTS = [
   "// " + MARKER,
   'import { debugEventsGET } from "next-server-api-debugger/server";',
-  'export const runtime = "nodejs";',
-  'export const dynamic = "force-dynamic";',
   'export { debugEventsGET as GET };',
   ""
 ].join("\n");
@@ -81,12 +77,24 @@ export function integrateNextApp(dir, {dryRun=false}={}) {
   const session=join(app,"api","next-server-api-debugger","session","route."+ext);
   const events=join(app,"api","next-server-api-debugger","events","route."+ext);
   const changes=[];
+  // Keep existing, package-generated routes compatible with Next.js 16
+  // Cache Components. Never rewrite application-owned routes.
+  const removeLegacyRouteConfig = source => source.replace(
+    /^export const (?:runtime = ["']nodejs["']|dynamic = ["']force-dynamic["']);\r?\n/gm,
+    ""
+  );
   const ensureRoute=(path,source)=>{
     const alt=path.replace(/\.(js|ts)$/, (_,extension)=>extension==="js"?".ts":".js");
     if (existsSync(alt)) throw new Error("Conflicting debugger route extension: "+relative(info.dir,alt));
     if (existsSync(path) && !hasMarker(path))
       throw new Error("Debugger route conflicts with an existing file: "+relative(info.dir,path));
     if (!existsSync(path)) changes.push({type:"write",path,source});
+    else {
+      const oldSource=read(path);
+      const repairedSource=removeLegacyRouteConfig(oldSource);
+      if (repairedSource !== oldSource)
+        changes.push({type:"write",path,source:repairedSource});
+    }
   };
   ensureRoute(session,ROUTE_SESSION);
   ensureRoute(events,ROUTE_EVENTS);

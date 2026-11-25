@@ -107,3 +107,31 @@ test("does not split instrumentation between root and src",()=>{
     assert.throws(()=>integrateNextApp(dir),/split across root and src/);
   });
 });
+
+test("generated route handlers omit Cache Components-incompatible segment settings",()=>{
+  fixture(({dir,app})=>{
+    integrateNextApp(dir);
+    for(const name of ["session","events"]) {
+      const route=readFileSync(join(app,"api","next-server-api-debugger",name,"route.ts"),"utf8");
+      assert.doesNotMatch(route,/export const (runtime|dynamic)\s*=/);
+      assert.match(route,/next-server-api-debugger:auto-generated/);
+    }
+  });
+});
+test("init repairs 1.1.0 generated routes without overwriting custom code",()=>{
+  fixture(({dir,app})=>{
+    integrateNextApp(dir);
+    const routes=["session","events"].map(name=>join(app,"api","next-server-api-debugger",name,"route.ts"));
+    for(const route of routes){
+      const original=readFileSync(route,"utf8");
+      writeFileSync(route,original+'export const runtime = "nodejs";\nexport const dynamic = "force-dynamic";\n// custom test comment must survive\n');
+    }
+    assert.equal(integrateNextApp(dir).changes.length,2);
+    for(const route of routes){
+      const repaired=readFileSync(route,"utf8");
+      assert.doesNotMatch(repaired,/export const (runtime|dynamic)\s*=/);
+      assert.match(repaired,/custom test comment must survive/);
+    }
+    assert.equal(integrateNextApp(dir).changes.length,0);
+  });
+});
