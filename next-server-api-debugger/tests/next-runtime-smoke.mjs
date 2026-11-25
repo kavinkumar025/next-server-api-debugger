@@ -72,8 +72,8 @@ try {
   const events=await fetch(base+"/api/next-server-api-debugger/events",{
     headers:{cookie},signal:AbortSignal.timeout(5000)
   });
-  assert.equal(events.status,200,"Events route failed: "+await events.text());
   const eventsData=await events.json();
+  assert.equal(events.status,200,"Events route failed: "+JSON.stringify(eventsData));
   assert.ok(Array.isArray(eventsData.events));
   process.stdout.write("Next.js 16 live session/login/cookie/events smoke test passed.\n");
 } finally {
