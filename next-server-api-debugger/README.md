@@ -43,13 +43,13 @@ Open your app on localhost, open DevTools → Console and enter the key chosen d
 localStorage.setItem("apiDebugLogging", "kavin");
 ```
 
-Replace `kavin` with your actual key. The browser instrumentation automatically detects it, sends it to your local server for verification, and changes the storage value to `enabled`.
+Replace `kavin` with your actual key. The browser instrumentation automatically detects it, immediately replaces the plaintext key with `connecting` while the local server verifies it, and changes the storage value to `enabled` after success. If the key is incorrect or the debugger endpoint is unavailable, it changes to `disabled` and prints an explanation in the browser Console.
 
 ```javascript
 localStorage.getItem("apiDebugLogging"); // "enabled" after successful verification
 ```
 
-On first browser load, `apiDebugLogging` defaults to `disabled`. Installing an npm package cannot directly write browser localStorage; browser startup instrumentation initializes the entry.
+On first browser load, `apiDebugLogging` defaults to `disabled`. Its states are `disabled` (off), `connecting` (verifying the key), and `enabled` (authenticated). You cannot enable a session by typing the literal `enabled` without first authenticating. Installing an npm package cannot directly write browser localStorage; browser startup instrumentation initializes the entry.
 
 Trigger a server-side API call by loading or navigating a Next.js page. Supported requests print user-friendly expandable Console groups:
 
@@ -144,6 +144,8 @@ The server also prints captured events to its own terminal as a fallback, even b
 ## Troubleshooting
 
 **The install did not ask for a key.** Run `npx next-server-api-debugger init`. npm install scripts do not reliably provide interactive prompts.
+
+**Local Storage keeps reverting to `disabled`.** Enter your configured key, not the literal `enabled`: `localStorage.setItem("apiDebugLogging", "YOUR_KEY")`. The value becomes `connecting` while authenticating, then `enabled` after success. If it returns to `disabled`, read the browser Console error, run `npx next-server-api-debugger status` in the app root, and restart `npm run dev` after changing the key.
 
 **No logs in browser.** Check `localStorage.getItem("apiDebugLogging")` is `"enabled"`, restart `npm run dev` after setup, and navigate to a page that actually makes server-side requests. Check the terminal for `[Server API]`. Use `debugFetch` for calls Next.js does not automatically expose.
 

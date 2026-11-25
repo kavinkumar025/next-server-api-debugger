@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.2 — Clear browser Local Storage activation status
+
+- Show `connecting` while verifying a key entered in `apiDebugLogging`, rather than immediately reverting to `disabled`.
+- Set `enabled` only after the local server confirms authentication; return to `disabled` with a Console error if verification fails.
+- Avoid enabling logging when a user disables it during authentication.
+- Add browser activation regression tests for valid keys, invalid keys, cancelled login, and missing sessions.
+
 ## 1.1.1 — Next.js 16 Cache Components build compatibility
 
 - Remove `runtime = "nodejs"` and `dynamic = "force-dynamic"` from automatically generated debugger routes.

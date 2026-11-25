@@ -39,7 +39,6 @@ export function startBrowserDebugger(): void {
   let pending = false;
   let polling = false;
   let cursor = 0;
-  let lastSetting = "";
   const read = () => { try { return localStorage.getItem(KEY); } catch { return null; } };
   const write = (value:string) => { try { localStorage.setItem(KEY,value); } catch {} };
 
@@ -50,67 +49,84 @@ export function startBrowserDebugger(): void {
   async function login(key:string) {
     pending = true;
     try {
+      if (authorized) await logout();
       const response = await fetch(BASE+"/session",{
         ...REQUEST,method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({key})
       });
-      const result = await response.json();
-      if (!response.ok) {
-        console.error("[API Debugger] "+(result.error || "Invalid debugging key"));
+      const result: { authenticated?:boolean; error?:string } =
+        await response.json().catch(()=>({}));
+      // A user can turn logging off while the request is in flight.
+      // Never re-enable it after they have done so.
+      if (read() !== "connecting") {
+        if (response.ok) await logout();
         return;
       }
-      cursor=0;
-      authorized=true;
+      if (!response.ok || result.authenticated !== true) {
+        write("disabled");
+        console.error("[API Debugger] Key verification failed ("+response.status+"): "+
+          (result.error || "Debug session not accepted")+
+          ". Check your key and run npx next-server-api-debugger status.");
+        return;
+      }
+      cursor = 0;
+      authorized = true;
       write("enabled");
       console.info("[API Debugger] Connected. Server requests and responses will appear below.");
     } catch {
-      console.error("[API Debugger] Unable to connect to debug endpoints. Run the package init command.");
+      if (read() === "connecting") write("disabled");
+      console.error("[API Debugger] Unable to verify key. Check your dev server and debugger routes.");
     } finally {
-      pending=false;
+      pending = false;
     }
   }
   async function checkSession() {
-    pending=true;
+    pending = true;
     try {
-      const result=await fetch(BASE+"/session",REQUEST);
-      const value=result.ok ? await result.json(): {authenticated:false};
-      if(read() !== "enabled") return;
-      if(value.authenticated) authorized=true;
+      const response = await fetch(BASE+"/session",REQUEST);
+      const value = response.ok ? await response.json(): {authenticated:false};
+      if (read() !== "enabled") return;
+      if (value.authenticated) authorized = true;
       else {
         write("disabled");
-        console.info("[API Debugger] Session expired; enter your key in "+KEY+" again.");
+        console.info("[API Debugger] No active session. Enter your configured key in apiDebugLogging.");
       }
     } catch {
-      write("disabled");
-      console.warn("[API Debugger] Debug session unavailable. Check your local Next.js setup.");
-    } finally {pending=false;}
+      if (read() === "enabled") {
+        write("disabled");
+        console.warn("[API Debugger] Debug session unavailable. Check your local Next.js setup.");
+      }
+    } finally { pending = false; }
   }
   function sync() {
     if (pending) return;
-    const value=read();
-    if (value===null) { write("disabled"); lastSetting="disabled"; return; }
-    if (value==="enabled") {
-      if (!authorized) { void checkSession(); }
-      lastSetting=value;
+    const value = read();
+    if (value === null) { write("disabled"); return; }
+    if (value === "enabled") {
+      if (!authorized) void checkSession();
       return;
     }
-    if(value==="disabled" || value==="") {
+    if (value === "disabled" || value === "") {
       if (authorized) void logout();
-      lastSetting=value;
       return;
     }
-    // A matching debug key is transiently in localStorage, not a secure vault.
-    // Remove before sending it in a same-origin, dev-only request.
-    if(value.length>24) {
+    if (value === "connecting") {
+      // A reload may interrupt a previous login attempt.
+      write("disabled");
+      console.warn("[API Debugger] Interrupted login. Enter your key again.");
+      return;
+    }
+    if (value.length > 24) {
       write("disabled");
       console.error("[API Debugger] Key length must be 1–24 characters.");
       return;
     }
-    write("disabled");
-    lastSetting="disabled";
-    if (authorized) void logout().then(()=>void login(value));
-    else void login(value);
+    // Clear the plaintext key immediately. Show an explicit in-progress state
+    // rather than making DevTools appear to reject the storage edit.
+    write("connecting");
+    console.info("[API Debugger] Verifying key…");
+    void login(value);
   }
   async function poll() {
     if (polling || !authorized || read()!=="enabled") return;
