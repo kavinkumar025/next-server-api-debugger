@@ -6,7 +6,7 @@
 [![CI](https://github.com/kavinkumar025/next-server-api-debugger/actions/workflows/ci.yml/badge.svg)](https://github.com/kavinkumar025/next-server-api-debugger/actions/workflows/ci.yml)
 [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-> Development only. Automatic setup targets **Next.js 16 App Router** with Node.js and React 19. Do not expose debugging endpoints to the public internet.
+> Development by default. Production debugging requires explicit opt-in, a strong separate key, and an exact origin. Automatic setup targets Next.js 16 App Router, Node.js and React 19. Production capture is metadata-only.
 
 ## Quick start: two commands
 
@@ -35,6 +35,36 @@ The key is stored in plain text as `NEXT_SERVER_API_DEBUGGER_KEY=YOUR_KEY` in yo
 ```bash
 npm run dev
 ```
+
+## Production builds and deployed sites
+
+After `npm run build` / `npm run start`, the debugger can be enabled with a **separate production configuration**. Public deployments must be protected by deployment access controls. The debugger remains **off by default** in production.
+
+Set these **server-only** environment variables in your hosting provider (or in `.env.local` for a local `next start` test):
+
+```dotenv
+NEXT_SERVER_API_DEBUGGER_PRODUCTION_ENABLED=true
+NEXT_SERVER_API_DEBUGGER_PRODUCTION_KEY=REPLACE_WITH_RANDOM_BASE64URL_KEY
+NEXT_SERVER_API_DEBUGGER_PRODUCTION_ORIGIN=https://your-site.example
+```
+
+Generate a strong production key in PowerShell:
+
+```powershell
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+The production key must have **at least 43 URL-safe characters**, generated independently of the 1–24-character local key. The short `NEXT_SERVER_API_DEBUGGER_KEY` from `init` is never accepted in production. For a local `next start` smoke test, set `PRODUCTION_ORIGIN=http://localhost:3000`. For deployment, set the exact HTTPS origin (including any nonstandard port). Do not use `NEXT_PUBLIC_` for these settings, commit secrets, or expose them to visitors.
+
+After rebuilding/redeploying or restarting `next start`, check `/api/next-server-api-debugger/session`. It should contain `ready: true` and `mode: "production"`. Use Chrome DevTools on that same origin:
+
+```javascript
+localStorage.setItem("apiDebugLogging", "YOUR_STRONG_PRODUCTION_KEY");
+```
+
+Production security: debugging is off by default; login is rate-limited on a best-effort per-process basis; the authenticated cookie is HttpOnly, SameSite=Strict, Secure over HTTPS, and **expires in ten minutes**. Production sessions use a signed, stateless cookie so they work across instances with the same production key. Logging strips request/response bodies and removes URL paths, queries and fragments; only method, HTTP status, duration, URL origin and time remain. Logout clears the browser cookie, but a stolen signed cookie may remain valid until its ten-minute expiry. Never enable on a public customer-facing deployment without additional hosting-level access protection.
+
+**Serverless limitation:** events are stored only in the memory of each Node.js instance. A deployed host may serve the captured fetch, session route and events route in different instances; browser Console logs are therefore **best-effort and may be absent** even with a successful login. To reliably debug all production requests, use hosted runtime logs, tracing or a central log drain. This package does not guarantee cross-instance observability.
 
 ## Enable logging in Chrome / Edge
 
@@ -129,7 +159,8 @@ Restart the local Next.js server after changing the key. **Uninstalling/reinstal
 | Local buffered replay | Up to 5,000 events per Node.js process |
 | Axios / raw HTTP libraries / databases / Edge runtime | Not automatically intercepted |
 | Browser Network tab | Cannot show actual server-to-server traffic |
-| Production / multiple server instances | Unsupported |
+| `next build` + `next start` | Explicit opt-in with a strong production key |
+| Deployed serverless sites | Auth support; browser log replay is best-effort per instance |
 
 Next.js may replace or bypass a global `fetch` wrapper, so automatic interception **cannot be guaranteed for every API call**. For a specific request not captured, use the optional explicit wrapper:
 
@@ -150,6 +181,8 @@ The server also prints captured events to its own terminal as a fallback, even b
 
 **Local Storage shows `error:404` with a `key not loaded` message.** The route exists but the running Next.js process has not loaded its key. Run init in the same app folder, stop the server completely, and restart `npm run dev`. Check the actual localhost port.
 
+**Production `404` or `Debugger is disabled`.** Configure `PRODUCTION_ENABLED=true`, a distinct 43+-character `PRODUCTION_KEY`, and the exact `PRODUCTION_ORIGIN` on the running server; restart or redeploy. A short local key cannot enable production.
+
 **Local Storage shows `error:401`.** Reset the configured server key from the app root with `npx next-server-api-debugger init --reset`, restart `npm run dev`, then enter the new key in `apiDebugLogging`.
 
 **Local Storage shows `error:403`, `error:404`, or `error:network`.** Run `npx next-server-api-debugger doctor`. Use the localhost address and `npm run dev` instead of a production server. Confirm the running app's `.env.local` contains `NEXT_SERVER_API_DEBUGGER_KEY=YOUR_KEY` and you fully restarted `npm run dev`.
@@ -169,6 +202,7 @@ The server also prints captured events to its own terminal as a fallback, even b
 ## Security constraints
 
 - **Trusted local development only.** API debug endpoints are disabled in production and reject non-loopback hosts.
+- **Production debugging requires deployment access controls** as well as a strong key. It must not expose actual visitors' data.
 - **The local key is readable in `.env.local` and `status`.** Never use a real password or commit the file.
 - **LocalStorage is not secret storage.** Entering a key there briefly exposes it to browser scripts and browser Console history. A 1-character key is guessable. Never reuse credentials.
 - Common JSON fields and URL query parameters are sanitized on a **best-effort** basis. Some fields can still expose sensitive data. Only test with synthetic data.

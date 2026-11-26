@@ -8,6 +8,16 @@
 
 # Changelog
 
+## 1.3.0 — Opt-in production build and deployed-site support
+
+- Allow explicit production debugging with a distinct 43+-character key, opt-in and exact origin.
+- Start browser instrumentation in production; the server enforces authentication and the opt-in.
+- Issue short-lived, HMAC-signed HttpOnly session cookies that verify across Node.js instances sharing the key.
+- Strip URL paths/queries and request/response bodies from production logs.
+- Continue to default production to disabled; best-effort browser log replay only on serverless hosts.
+- Add production authentication and runtime build/start tests.
+
+
 ## 1.1.3 — Authentication diagnostic improvements
 
 - Failed browser login now displays `error:401`, `error:403`, `error:404`, or `error:network` in the same `apiDebugLogging` Local Storage key instead of silently reverting to disabled.

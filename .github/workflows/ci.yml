@@ -22,5 +22,7 @@ jobs:
         run: npm test
       - name: Next.js runtime smoke test (session and events routes)
         run: node tests/next-runtime-smoke.mjs
+      - name: Production next build/start smoke test
+        run: node tests/next-production-smoke.mjs
       - name: Inspect package
         run: npm pack --dry-run
