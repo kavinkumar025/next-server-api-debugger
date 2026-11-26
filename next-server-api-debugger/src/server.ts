@@ -11,7 +11,6 @@ const MAX_LOGS = 5000;
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 const STORE_KEY = Symbol.for("next-server-api-debugger.store.v1");
 const FETCH_KEY = Symbol.for("next-server-api-debugger.fetch.v1");
-const SECRET_NAME = "NEXT_SERVER_API_DEBUGGER_KEY_HASH";
 const SENSITIVE = /authorization|token|secret|password|passcode|cookie|api.?key|session|email|phone|mobile|address|card|otp|cvv|dob|ssn|credential/i;
 
 export type ApiDebugEvent = {
@@ -48,16 +47,27 @@ function store(): Store {
     options: { captureBodies: true, maxBodyBytes: 8000 }
   };
 }
+function plainKey(): string | null {
+  const value = process.env.NEXT_SERVER_API_DEBUGGER_KEY ?? "";
+  return /^[A-Za-z0-9._-]{1,24}$/.test(value) ? value : null;
+}
+function validLegacyHash(): boolean {
+  return /^[0-9a-f]{32}:[0-9a-f]{128}$/i.test(process.env.NEXT_SERVER_API_DEBUGGER_KEY_HASH ?? "");
+}
 function enabled(): boolean {
-  return process.env.NODE_ENV === "development" &&
-    /^[0-9a-f]{32}:[0-9a-f]{128}$/i.test(process.env[SECRET_NAME] ?? "");
+  return process.env.NODE_ENV === "development" && (plainKey() !== null || validLegacyHash());
 }
 function matchesKey(key: string): boolean {
-  const secret = process.env[SECRET_NAME] ?? "";
-  if (key.length < 1 || key.length > 24 || !/^[0-9a-f]{32}:[0-9a-f]{128}$/i.test(secret)) return false;
-  const [salt, digest] = secret.split(":");
-  const actual = scryptSync(key, Buffer.from(salt, "hex"), 64);
-  return timingSafeEqual(actual, Buffer.from(digest, "hex"));
+  if (key.length < 1 || key.length > 24) return false;
+  const plain = plainKey();
+  if (plain !== null) {
+    const actual = Buffer.from(key, "utf8");
+    const expected = Buffer.from(plain, "utf8");
+    return actual.length === expected.length && timingSafeEqual(actual, expected);
+  }
+  if (!validLegacyHash()) return false;
+  const [salt,digest] = (process.env.NEXT_SERVER_API_DEBUGGER_KEY_HASH ?? "").split(":");
+  return timingSafeEqual(scryptSync(key, Buffer.from(salt,"hex"),64),Buffer.from(digest,"hex"));
 }
 function active(token?: string): Session | undefined {
   if (!token) return undefined;
@@ -77,6 +87,11 @@ function response(body: unknown, status=200, headers: Record<string,string>={}):
     status,
     headers: { "Cache-Control":"private, no-store", "X-Content-Type-Options":"nosniff", ...headers }
   });
+}
+function disabledResponse(req: Request): Response {
+  if (!localRequest(req) || process.env.NODE_ENV !== "development")
+    return response({error:"Debugger is disabled"},404);
+  return response({error:"Debugger key not loaded in this Next.js dev process. Run init --reset in this application's folder and restart npm run dev."},404);
 }
 function localRequest(req: Request): boolean {
   try { return LOCAL_HOSTS.has(new URL(req.url).hostname.toLowerCase()); }
@@ -218,12 +233,12 @@ export function debugFetch(input: RequestInfo | URL, init?: RequestInit): Promis
 }
 /** app/api/next-server-api-debugger/session/route.ts - GET */
 export async function debugSessionGET(request: Request): Promise<Response> {
-  if (!enabled() || !localRequest(request)) return response({ error:"Debugger is disabled" },404);
+  if (!enabled() || !localRequest(request)) return disabledResponse(request);
   return response({ authenticated: Boolean(active(cookieToken(request))), ready: true });
 }
 /** app/api/next-server-api-debugger/session/route.ts - POST */
 export async function debugSessionPOST(request: Request): Promise<Response> {
-  if (!enabled() || !localRequest(request)) return response({ error:"Debugger is disabled" },404);
+  if (!enabled() || !localRequest(request)) return disabledResponse(request);
   if (!sameOrigin(request)) return response({ error:"Invalid origin" },403);
   if (!/application\/json/i.test(request.headers.get("content-type") ?? "")) return response({ error:"JSON required" },415);
   if (Number(request.headers.get("content-length") ?? 0) > 2048) return response({ error:"Request too large" },413);
@@ -251,7 +266,7 @@ export async function debugSessionPOST(request: Request): Promise<Response> {
 }
 /** app/api/next-server-api-debugger/session/route.ts - DELETE */
 export async function debugSessionDELETE(request: Request): Promise<Response> {
-  if (!enabled() || !localRequest(request)) return response({ error:"Debugger is disabled" },404);
+  if (!enabled() || !localRequest(request)) return disabledResponse(request);
   if (!sameOrigin(request)) return response({ error:"Invalid origin" },403);
   const token = cookieToken(request);
   if (token) store().sessions.delete(token);
@@ -262,7 +277,7 @@ export async function debugSessionDELETE(request: Request): Promise<Response> {
 }
 /** app/api/next-server-api-debugger/events/route.ts - GET */
 export async function debugEventsGET(request: Request): Promise<Response> {
-  if (!enabled() || !localRequest(request)) return response({ error:"Debugger is disabled" },404);
+  if (!enabled() || !localRequest(request)) return disabledResponse(request);
   if (!active(cookieToken(request))) return response({ error:"Session expired; sign in again" },401);
   const since = Number(new URL(request.url).searchParams.get("since") ?? "0");
   if (!Number.isSafeInteger(since) || since < 0) return response({ error:"Invalid cursor" },400);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { randomBytes, scryptSync } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -12,7 +12,6 @@ const PORT = 43127;
 const base = "http://localhost:"+PORT;
 const endpoint = base+"/api/next-server-api-debugger/session";
 const key = "ci-test-key-"+randomBytes(3).toString("hex");
-const salt = randomBytes(16);
 let child;
 let output = "";
 try {
@@ -32,8 +31,7 @@ try {
   writeFileSync(join(project,"app","page.jsx"),
     'export default function Page(){return <main>Hello test</main>}\n');
   writeFileSync(join(project,".env.local"),
-    "NEXT_SERVER_API_DEBUGGER_KEY_HASH="+salt.toString("hex")+":"+
-    scryptSync(key,salt,64).toString("hex")+"\n");
+    "NEXT_SERVER_API_DEBUGGER_KEY="+key+"\n");
   const integrated = integrateNextApp(project);
   assert.equal(integrated.supported,true);
   child = spawn(process.execPath,[join(root,"node_modules","next","dist","bin","next"),

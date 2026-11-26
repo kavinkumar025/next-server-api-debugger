@@ -1,39 +1,12 @@
 #!/usr/bin/env node
-import { randomBytes, scryptSync } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync, appendFileSync, chmodSync } from "node:fs";
 import { resolve } from "node:path";
 import { stdin, stdout } from "node:process";
 import { createInterface } from "node:readline/promises";
+import { parseKeyConfig, saveKeyConfig } from "./key-config.mjs";
 import { integrateNextApp, integrationStatus } from "./auto-integrate.mjs";
 
 
-function hidden(question) {
-  if (!stdin.isTTY || !stdout.isTTY || !stdin.setRawMode)
-    throw new Error("A real interactive terminal is required.");
-  return new Promise((done,fail) => {
-    let value="";
-    stdout.write(question);
-    stdin.setRawMode(true);
-    stdin.setEncoding("utf8");
-    stdin.resume();
-    function cleanup(err) {
-      stdin.removeListener("data",onData);
-      stdin.setRawMode(false);
-      stdin.pause();
-      stdout.write("\n");
-      err ? fail(err) : done(value);
-    }
-    function onData(text) {
-      for(const ch of text) {
-        if(ch==="\r" || ch==="\n") return cleanup();
-        if(ch==="\u0003") return cleanup(new Error("Setup cancelled"));
-        if(ch==="\u007f" || ch==="\b") value=value.slice(0,-1);
-        else if(ch>=" ") value+=ch;
-      }
-    }
-    stdin.on("data",onData);
-  });
-}
 async function main() {
   const action = process.argv[2] || "init";
   if (!["init", "status", "doctor"].includes(action)) {
@@ -51,18 +24,20 @@ async function main() {
   }
   const envPath=resolve(dir,".env.local");
   let env=existsSync(envPath) ? readFileSync(envPath,"utf8") : "";
-  const exists=/^NEXT_SERVER_API_DEBUGGER_KEY_HASH\s*=/m.test(env);
+  const config=parseKeyConfig(env);
+  const exists=config.key !== null || config.legacy;
   if (action === "status" || action === "doctor") {
     const wiring = integrationStatus(dir);
     console.log(wiring.supported
       ? (wiring.configured ? "Next.js debugger auto-integration: ready." : "Next.js debugger auto-integration: incomplete.")
       : "Next.js debugger auto-integration: " + wiring.reason);
-    console.log(exists
-      ? "Debug key configured in this application's .env.local."
-      : "No debug key found in this application's .env.local.");
-    if (exists) {
-      console.log("The original key cannot be displayed: only its salted hash is stored.");
-      console.log("Ask your organization for the shared key or run: npx next-server-api-debugger init --reset");
+    console.log("Application folder: "+dir);
+    console.log(exists ? "Local debugger key configured." : "No debugger key in this application's .env.local.");
+    if (config.key !== null) {
+      if(action==="status") console.log("Your debugging key: "+config.key);
+      if(!config.valid) console.log("The key is invalid; run init --reset.");
+    } else if (config.legacy) {
+      console.log("Legacy hashed key found. Its original value cannot be shown; run init --reset to create a readable key.");
     }
     if (action === "doctor") {
       const source=process.env.NEXT_SERVER_API_DEBUGGER_DOCTOR_URL || "http://localhost:3000";
@@ -84,9 +59,9 @@ async function main() {
       } catch {
         console.log("Runtime: cannot reach "+target.origin+". Start the app with npm run dev, then rerun doctor.");
       }
-      if(exists && !/^[0-9a-f]{32}:[0-9a-f]{128}$/i.test(
+      if(config.legacy && !config.key && !/^[0-9a-f]{32}:[0-9a-f]{128}$/i.test(
           (env.match(/^NEXT_SERVER_API_DEBUGGER_KEY_HASH\s*=\s*(.*)$/m)||[])[1]||""))
-        console.log("Runtime: malformed key hash. Run init --reset.");
+        console.log("Runtime: malformed legacy key hash. Run init --reset.");
     }
     return;
   }
@@ -103,8 +78,8 @@ async function main() {
   if (wiring.alreadyConfigured) console.log("[API Debugger] Next.js already integrated.");
   if (exists && !process.argv.includes("--reset")) {
     console.log("A debugging key is already configured.");
-    console.log("For safety, the original key cannot be shown because only a salted hash was stored.");
-    console.log("Ask your team administrator or password manager for the original key.");
+    if(config.key !== null) console.log("Your existing key: "+config.key);
+    else console.log("This key was previously hashed and cannot be displayed.");
     const rl = createInterface({ input: stdin, output: stdout });
     let choice;
     try { choice = (await rl.question("Replace the current debugging key now? [y/N]: ")).trim().toLowerCase(); }
@@ -114,23 +89,20 @@ async function main() {
       return;
     }
   }
-  console.log("\nNext Server API Debugger — private key setup\n");
-  // One simple prompt — no numeric menu or 24-character minimum.
-  const key=await hidden("Choose your debug key (1-24 characters, hidden): ");
-  if(key.length<1 || key.length>24 || /[\r\n]/.test(key))
-    throw new Error("Key must contain 1–24 characters, with no newlines.");
-  const salt=randomBytes(16);
-  const hash=scryptSync(key,salt,64);
-  const row="NEXT_SERVER_API_DEBUGGER_KEY_HASH="+salt.toString("hex")+":"+hash.toString("hex");
-  env=exists ? env.replace(/^NEXT_SERVER_API_DEBUGGER_KEY_HASH\s*=.*$/m,row) :
-    env+(env && !env.endsWith("\n") ? "\n":"")+row+"\n";
+  console.log("\nNext Server API Debugger — readable localhost key setup\n");
+  const keyPrompt=createInterface({input:stdin,output:stdout});
+  let key;
+  try { key=(await keyPrompt.question("Choose your key (1–24 letters, digits, dots, underscores, or hyphens): ")).trim(); }
+  finally { keyPrompt.close(); }
+  env=saveKeyConfig(env,key);
   writeFileSync(envPath,env,{mode:0o600});
   try{chmodSync(envPath,0o600);}catch{}
   const ignorePath=resolve(dir,".gitignore");
   const ignore=existsSync(ignorePath) ? readFileSync(ignorePath,"utf8") : "";
   if(!ignore.split(/\r?\n/).some(x=>x.trim()===".env.local" || x.trim()===".env*"))
     appendFileSync(ignorePath,(ignore && !ignore.endsWith("\n") ? "\n":"")+".env.local\n");
-  console.log("✔ Salted key hash saved in .env.local (original key not saved)");
+  console.log("✔ Your key: "+key);
+  console.log("✔ Plain-text key stored in .env.local. Local development only — never commit or share this file.");
   if (exists) console.log("✔ Previous key replaced. Restart your Next.js dev server to apply the change.");
   console.log("✔ Debug secrets excluded from Git");
 }

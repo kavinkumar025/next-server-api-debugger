@@ -62,3 +62,16 @@ test("non-interactive init does not rotate or expose existing keys", () => {
     assert.equal(readFileSync(file, "utf8"), before);
   });
 });
+
+test("readable key replaces legacy hash and preserves unrelated env entries",async()=>{
+  const {parseKeyConfig,saveKeyConfig}=await import("../bin/key-config.mjs");
+  const old="SITE_URL=http://localhost:3000\nNEXT_SERVER_API_DEBUGGER_KEY_HASH=abc:def\nOTHER=value\n";
+  const fresh=saveKeyConfig(old,"myLocalKey_1");
+  assert.equal(parseKeyConfig(fresh).key,"myLocalKey_1");
+  assert.equal(parseKeyConfig(fresh).valid,true);
+  assert.equal(parseKeyConfig(fresh).legacy,false);
+  assert.match(fresh,/^OTHER=value$/m);
+  assert.match(fresh,/^SITE_URL=http:\/\/localhost:3000$/m);
+  assert.doesNotMatch(fresh,/^NEXT_SERVER_API_DEBUGGER_KEY_HASH=/m);
+  assert.throws(()=>saveKeyConfig(old,"bad key"),/Key must/);
+});

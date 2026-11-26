@@ -1,3 +1,11 @@
+## 1.2.0 — Visible localhost key and useful 404 errors
+
+- Store and display the chosen local developer key as NEXT_SERVER_API_DEBUGGER_KEY in the app's .env.local.
+- Show the key during setup and through status; retain legacy hash support for existing users.
+- Make a missing server key explicit in the local 404 error and continue blocking production and remote clients.
+- Add key config tests, server auth tests, and a real Next.js smoke test using the readable key.
+- Security tradeoff: never reuse an account password or commit .env.local.
+
 # Changelog
 
 ## 1.1.3 — Authentication diagnostic improvements

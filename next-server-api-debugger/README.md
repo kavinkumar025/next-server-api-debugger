@@ -23,11 +23,12 @@ An optional interactive installation is `npm install --foreground-scripts next-s
 
 ```text
 Next Server API Debugger — private key setup
-Choose your debug key (1-24 characters, hidden):
-✔ Salted key hash saved in .env.local
+Choose your key (1–24 letters, digits, dots, underscores, or hyphens): myLocalKey_1
+✔ Your key: myLocalKey_1
+✔ Plain-text key stored in .env.local
 ```
 
-The private key is **not written in plaintext** to project files; its salted hash is stored in the application's `.env.local` file, excluded from Git. Remember your key.
+The key is stored in plain text as `NEXT_SERVER_API_DEBUGGER_KEY=YOUR_KEY` in your application's `.env.local`, and shown by the `status` command. This is a local-development-only convenience and less secure than hashing: never reuse a real password or commit `.env.local`. Legacy hashed keys remain supported until you run `init --reset`.
 
 **Restart** your local Next.js server after setup:
 
@@ -102,7 +103,7 @@ JavaScript (`.js`) and `src/app` applications are also supported.
 npx next-server-api-debugger status
 ```
 
-Shows whether a key and automatic integration are configured **on the current machine**. To also verify the actual running Next.js debugger endpoint, run `npx next-server-api-debugger doctor` from your app root while `npm run dev` is running. It checks localhost port 3000, and does not print your key or hash. For custom ports, set `$env:NEXT_SERVER_API_DEBUGGER_DOCTOR_URL="http://localhost:3001"` in PowerShell. Production `npm start` is intentionally unsupported. The original key cannot be displayed because only a salted, one-way hash is stored. Ask your organization's password manager for the shared key.
+Shows whether a key and automatic integration are configured **on the current machine**. To also verify the actual running Next.js debugger endpoint, run `npx next-server-api-debugger doctor` from your app root while `npm run dev` is running. It checks localhost port 3000, and does not print your key or hash. For custom ports, set `$env:NEXT_SERVER_API_DEBUGGER_DOCTOR_URL="http://localhost:3001"` in PowerShell. Production `npm start` is intentionally unsupported. The new readable key is displayed by `status`. A legacy hashed key cannot be recovered; run `init --reset` once to migrate.
 
 ```bash
 npx next-server-api-debugger init
@@ -147,9 +148,11 @@ The server also prints captured events to its own terminal as a fallback, even b
 
 **Local Storage keeps reverting to `disabled`.** Enter your configured key, not the literal `enabled`: `localStorage.setItem("apiDebugLogging", "YOUR_KEY")`. The value becomes `connecting` while authenticating, then `enabled` after success. If it shows `error:<code>`, inspect the browser Console error, run `npx next-server-api-debugger doctor` in the app root, and restart `npm run dev` after updating the configured key.
 
+**Local Storage shows `error:404` with a `key not loaded` message.** The route exists but the running Next.js process has not loaded its key. Run init in the same app folder, stop the server completely, and restart `npm run dev`. Check the actual localhost port.
+
 **Local Storage shows `error:401`.** Reset the configured server key from the app root with `npx next-server-api-debugger init --reset`, restart `npm run dev`, then enter the new key in `apiDebugLogging`.
 
-**Local Storage shows `error:403`, `error:404`, or `error:network`.** Run `npx next-server-api-debugger doctor`. Use the localhost address and `npm run dev` instead of a production server. Confirm your .env.local contains the generated key hash without sharing it.
+**Local Storage shows `error:403`, `error:404`, or `error:network`.** Run `npx next-server-api-debugger doctor`. Use the localhost address and `npm run dev` instead of a production server. Confirm the running app's `.env.local` contains `NEXT_SERVER_API_DEBUGGER_KEY=YOUR_KEY` and you fully restarted `npm run dev`.
 
 **No logs in browser.** Check `localStorage.getItem("apiDebugLogging")` is `"enabled"`, restart `npm run dev` after setup, and navigate to a page that actually makes server-side requests. Check the terminal for `[Server API]`. Use `debugFetch` for calls Next.js does not automatically expose.
 
@@ -161,11 +164,12 @@ The server also prints captured events to its own terminal as a fallback, even b
 
 **I previously installed the manual provider.** Remove the old layout `ApiDebugProvider` wrapper after upgrading to avoid duplicate polling.
 
-**Need to change the key.** Run `npx next-server-api-debugger init --reset` and restart development. The original key cannot be recovered from the saved hash.
+**Need to change the key.** Run `npx next-server-api-debugger init --reset` and restart development. The current readable key can be shown by `status`, but an old legacy hash cannot be decoded.
 
 ## Security constraints
 
 - **Trusted local development only.** API debug endpoints are disabled in production and reject non-loopback hosts.
+- **The local key is readable in `.env.local` and `status`.** Never use a real password or commit the file.
 - **LocalStorage is not secret storage.** Entering a key there briefly exposes it to browser scripts and browser Console history. A 1-character key is guessable. Never reuse credentials.
 - Common JSON fields and URL query parameters are sanitized on a **best-effort** basis. Some fields can still expose sensitive data. Only test with synthetic data.
 - All authenticated local debug sessions connected to the same Node.js process can see that process's buffered events. It is not user-isolated.

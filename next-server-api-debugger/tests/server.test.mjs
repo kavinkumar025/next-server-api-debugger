@@ -104,3 +104,35 @@ test("loopback Host fallback rejects a mismatched port", async () => {
   });
   assert.equal((await debugSessionPOST(req)).status,403);
 });
+
+test("readable local key authenticates without a hash",async()=>{
+  const oldHash=process.env.NEXT_SERVER_API_DEBUGGER_KEY_HASH;
+  const oldPlain=process.env.NEXT_SERVER_API_DEBUGGER_KEY;
+  try {
+    delete process.env.NEXT_SERVER_API_DEBUGGER_KEY_HASH;
+    process.env.NEXT_SERVER_API_DEBUGGER_KEY="visible_dev_key";
+    assert.equal((await debugSessionPOST(login("visible_dev_key"))).status,200);
+    assert.equal((await debugSessionPOST(login("wrong"))).status,401);
+  } finally {
+    if(oldPlain===undefined) delete process.env.NEXT_SERVER_API_DEBUGGER_KEY;
+    else process.env.NEXT_SERVER_API_DEBUGGER_KEY=oldPlain;
+    if(oldHash===undefined) delete process.env.NEXT_SERVER_API_DEBUGGER_KEY_HASH;
+    else process.env.NEXT_SERVER_API_DEBUGGER_KEY_HASH=oldHash;
+  }
+});
+test("missing dev-server key returns explanatory 404",async()=>{
+  const oldHash=process.env.NEXT_SERVER_API_DEBUGGER_KEY_HASH;
+  const oldPlain=process.env.NEXT_SERVER_API_DEBUGGER_KEY;
+  try {
+    delete process.env.NEXT_SERVER_API_DEBUGGER_KEY_HASH;
+    delete process.env.NEXT_SERVER_API_DEBUGGER_KEY;
+    const result=await debugSessionPOST(login("any-key"));
+    assert.equal(result.status,404);
+    assert.match((await result.json()).error,/not loaded/i);
+  } finally {
+    if(oldPlain===undefined) delete process.env.NEXT_SERVER_API_DEBUGGER_KEY;
+    else process.env.NEXT_SERVER_API_DEBUGGER_KEY=oldPlain;
+    if(oldHash===undefined) delete process.env.NEXT_SERVER_API_DEBUGGER_KEY_HASH;
+    else process.env.NEXT_SERVER_API_DEBUGGER_KEY_HASH=oldHash;
+  }
+});
