@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 let id = 0;
-async function withBrowser(run) {
+async function withBrowser(run,mode="development") {
   const prior = {
     window: globalThis.window,
     localStorage: globalThis.localStorage,
@@ -19,7 +19,7 @@ async function withBrowser(run) {
     getItem(key) { return data.has(key) ? data.get(key) : null; },
     setItem(key,value) { data.set(key,String(value)); }
   };
-  process.env.NODE_ENV = "development";
+  process.env.NODE_ENV = mode;
   try {
     await import("../dist/browser.js?browser-test="+(++id));
     assert.equal(intervals.length,2,"browser debugger registered both timers");
@@ -89,4 +89,15 @@ test("enabled without a valid server session shows a visible error",async()=>{
     await flush();
     assert.equal(read(),"error:session-expired");
   });
+});
+
+test("production instrumentation activates with a long, server-approved key",async()=>{
+  await withBrowser(async({sync,read})=>{
+    globalThis.fetch=async()=>({ok:true,status:200,json:async()=>({authenticated:true})});
+    localStorage.setItem("apiDebugLogging","A".repeat(43));
+    sync();
+    assert.equal(read(),"connecting");
+    await flush();
+    assert.equal(read(),"enabled");
+  },"production");
 });

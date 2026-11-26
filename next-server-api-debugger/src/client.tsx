@@ -121,8 +121,8 @@ export function ApiDebugProvider({
       // Read-and-clear first, before making network requests. A browser-stored
       // secret remains observable to scripts during this short interval.
       setSetting("disabled");
-      if (value.length > 24) {
-        console.error("[API Debugger] Your debugging key must contain 1–24 characters.");
+      if (value.length > 128) {
+        console.error("[API Debugger] Your debugging key must contain 1–128 characters.");
         return;
       }
       void signIn(value);

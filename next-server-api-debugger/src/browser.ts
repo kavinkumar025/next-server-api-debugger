@@ -30,7 +30,7 @@ function show(event: ApiDebugEvent): void {
  * Does not need a root React provider or a component wrapper.
  */
 export function startBrowserDebugger(): void {
-  if (typeof window === "undefined" || process.env.NODE_ENV !== "development") return;
+  if (typeof window === "undefined") return; // Server decides whether debugging is enabled.
   const browser = window as BrowserGlobal;
   if (browser.__nextServerApiDebuggerAutoStarted) return;
   browser.__nextServerApiDebuggerAutoStarted = true;
@@ -120,9 +120,9 @@ export function startBrowserDebugger(): void {
       console.warn("[API Debugger] Interrupted login. Enter your key again.");
       return;
     }
-    if (value.length > 24) {
+    if (value.length > 128) {
       write("disabled");
-      console.error("[API Debugger] Key length must be 1–24 characters.");
+      console.error("[API Debugger] Key length must be 1–128 characters.");
       return;
     }
     // Clear the plaintext key immediately. Show an explicit in-progress state

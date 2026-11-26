@@ -136,3 +136,44 @@ test("missing dev-server key returns explanatory 404",async()=>{
     else process.env.NEXT_SERVER_API_DEBUGGER_KEY_HASH=oldHash;
   }
 });
+
+test("production requires explicit opt-in, strong key and exact allowed origin",async()=>{
+  const names=["NODE_ENV","NEXT_SERVER_API_DEBUGGER_PRODUCTION_ENABLED",
+    "NEXT_SERVER_API_DEBUGGER_PRODUCTION_KEY","NEXT_SERVER_API_DEBUGGER_PRODUCTION_ORIGIN"];
+  const old=Object.fromEntries(names.map(k=>[k,process.env[k]]));
+  const strong="A".repeat(43);
+  const make=key=>debugSessionPOST(login(key));
+  const get=()=>debugSessionGET(new Request(url));
+  try{
+    process.env.NODE_ENV="production";
+    delete process.env.NEXT_SERVER_API_DEBUGGER_PRODUCTION_ENABLED;
+    process.env.NEXT_SERVER_API_DEBUGGER_PRODUCTION_KEY=strong;
+    process.env.NEXT_SERVER_API_DEBUGGER_PRODUCTION_ORIGIN="http://localhost:3000";
+    assert.equal((await get()).status,404);
+    process.env.NEXT_SERVER_API_DEBUGGER_PRODUCTION_ENABLED="true";
+    process.env.NEXT_SERVER_API_DEBUGGER_PRODUCTION_KEY="kavin";
+    assert.equal((await get()).status,404);
+    process.env.NEXT_SERVER_API_DEBUGGER_PRODUCTION_KEY=strong;
+    process.env.NEXT_SERVER_API_DEBUGGER_PRODUCTION_ORIGIN="http://localhost:3001";
+    assert.equal((await get()).status,404);
+    process.env.NEXT_SERVER_API_DEBUGGER_PRODUCTION_ORIGIN="http://localhost:3000";
+    assert.equal((await get()).status,200);
+    assert.equal((await make("kavin")).status,401);
+    const signed=await make(strong);
+    assert.equal(signed.status,200);
+    assert.match(signed.headers.get("set-cookie"),/HttpOnly/);
+    assert.match(signed.headers.get("set-cookie"),/Max-Age=600/);
+    const cookie=signed.headers.get("set-cookie").split(";")[0];
+    globalThis[Symbol.for("next-server-api-debugger.store.v1")].sessions.clear();
+    const session=await debugSessionGET(new Request(url,{headers:{cookie}}));
+    assert.equal((await session.json()).authenticated,true);
+    const events=await debugEventsGET(new Request("http://localhost:3000/api/next-server-api-debugger/events",{headers:{cookie}}));
+    assert.equal(events.status,200);
+    const invalid=await debugSessionGET(new Request(url,{headers:{cookie:cookie+"x"}}));
+    assert.equal((await invalid.json()).authenticated,false);
+  } finally {
+    for(const [k,v] of Object.entries(old)){
+      if(v===undefined)delete process.env[k]; else process.env[k]=v;
+    }
+  }
+});
