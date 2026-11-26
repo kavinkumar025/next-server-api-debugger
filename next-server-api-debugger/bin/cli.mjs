@@ -32,12 +32,12 @@ async function main() {
       ? (wiring.configured ? "Next.js debugger auto-integration: ready." : "Next.js debugger auto-integration: incomplete.")
       : "Next.js debugger auto-integration: " + wiring.reason);
     console.log("Application folder: "+dir);
-    console.log(exists ? "Local debugger key configured." : "No debugger key in this application's .env.local.");
+    console.log(exists ? "Local debugger key configured." : "No debug key found in this application's .env.local.");
     if (config.key !== null) {
       if(action==="status") console.log("Your debugging key: "+config.key);
       if(!config.valid) console.log("The key is invalid; run init --reset.");
     } else if (config.legacy) {
-      console.log("Legacy hashed key found. Its original value cannot be shown; run init --reset to create a readable key.");
+      console.log("Legacy hashed key found. Its original value cannot be displayed; run init --reset to create a readable key.");
     }
     if (action === "doctor") {
       const source=process.env.NEXT_SERVER_API_DEBUGGER_DOCTOR_URL || "http://localhost:3000";
