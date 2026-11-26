@@ -2,11 +2,12 @@
  * Next.js Node.js App Router developer-only request logger.
  * In-memory state is NOT for distributed production environments.
  */
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes, scryptSync, timingSafeEqual, createHmac } from "node:crypto";
 
 const COOKIE = "__next_server_api_debug";
 const DEBUG_ROUTE = "/api/next-server-api-debugger/";
 const TTL = 30 * 60 * 1000;
+const PRODUCTION_TTL_SECONDS = 10 * 60;
 const MAX_LOGS = 5000;
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 const STORE_KEY = Symbol.for("next-server-api-debugger.store.v1");
@@ -47,30 +48,71 @@ function store(): Store {
     options: { captureBodies: true, maxBodyBytes: 8000 }
   };
 }
+function isProduction(): boolean { return process.env.NODE_ENV === "production"; }
 function plainKey(): string | null {
-  const value = process.env.NEXT_SERVER_API_DEBUGGER_KEY ?? "";
+  const value=process.env.NEXT_SERVER_API_DEBUGGER_KEY ?? "";
   return /^[A-Za-z0-9._-]{1,24}$/.test(value) ? value : null;
 }
 function validLegacyHash(): boolean {
   return /^[0-9a-f]{32}:[0-9a-f]{128}$/i.test(process.env.NEXT_SERVER_API_DEBUGGER_KEY_HASH ?? "");
 }
+function productionKey(): string | null {
+  if(process.env.NEXT_SERVER_API_DEBUGGER_PRODUCTION_ENABLED !== "true") return null;
+  const key=process.env.NEXT_SERVER_API_DEBUGGER_PRODUCTION_KEY ?? "";
+  return /^[A-Za-z0-9_-]{43,128}$/.test(key) ? key : null;
+}
+function productionOrigin(): string | null {
+  const configured=process.env.NEXT_SERVER_API_DEBUGGER_PRODUCTION_ORIGIN ?? "";
+  try {
+    const value=new URL(configured);
+    const local=LOCAL_HOSTS.has(value.hostname.toLowerCase());
+    if(value.username || value.password || value.pathname!=="/" || value.search ||
+       value.hash || (value.protocol!=="https:" && !(local && value.protocol==="http:")))
+      return null;
+    return value.origin;
+  } catch { return null; }
+}
 function enabled(): boolean {
-  return process.env.NODE_ENV === "development" && (plainKey() !== null || validLegacyHash());
+  if (isProduction()) return productionKey()!==null && productionOrigin()!==null;
+  return process.env.NODE_ENV==="development" && (plainKey()!==null || validLegacyHash());
 }
 function matchesKey(key: string): boolean {
-  if (key.length < 1 || key.length > 24) return false;
-  const plain = plainKey();
-  if (plain !== null) {
-    const actual = Buffer.from(key, "utf8");
-    const expected = Buffer.from(plain, "utf8");
-    return actual.length === expected.length && timingSafeEqual(actual, expected);
+  if (isProduction()) {
+    const secret=productionKey();
+    if(!secret) return false;
+    const actual=Buffer.from(key,"utf8");
+    const expected=Buffer.from(secret,"utf8");
+    return actual.length===expected.length && timingSafeEqual(actual,expected);
   }
-  if (!validLegacyHash()) return false;
-  const [salt,digest] = (process.env.NEXT_SERVER_API_DEBUGGER_KEY_HASH ?? "").split(":");
-  return timingSafeEqual(scryptSync(key, Buffer.from(salt,"hex"),64),Buffer.from(digest,"hex"));
+  if (key.length<1 || key.length>24) return false;
+  const plain=plainKey();
+  if (plain!==null) {
+    const actual=Buffer.from(key,"utf8");
+    const expected=Buffer.from(plain,"utf8");
+    return actual.length===expected.length && timingSafeEqual(actual,expected);
+  }
+  if(!validLegacyHash()) return false;
+  const [salt,digest]=(process.env.NEXT_SERVER_API_DEBUGGER_KEY_HASH ?? "").split(":");
+  return timingSafeEqual(scryptSync(key,Buffer.from(salt,"hex"),64),Buffer.from(digest,"hex"));
+}
+function issueProductionToken(): string {
+  const payload=String(Math.floor(Date.now()/1000)+PRODUCTION_TTL_SECONDS)+"."+randomBytes(16).toString("base64url");
+  return payload+"."+createHmac("sha256",productionKey()!).update(payload).digest("base64url");
+}
+function productionSession(token: string): Session | undefined {
+  if(!/^[0-9]{10,12}\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$/.test(token)) return;
+  const segments=token.split(".");
+  const expires=Number(segments[0])*1000;
+  if(!Number.isSafeInteger(expires) || expires<=Date.now() ||
+     expires>Date.now()+PRODUCTION_TTL_SECONDS*1000) return;
+  const expected=createHmac("sha256",productionKey()!).update(segments[0]+"."+segments[1]).digest();
+  const actual=Buffer.from(segments[2],"base64url");
+  if(actual.length!==expected.length || !timingSafeEqual(actual,expected)) return;
+  return {expires};
 }
 function active(token?: string): Session | undefined {
   if (!token) return undefined;
+  if(isProduction()) return enabled() ? productionSession(token) : undefined;
   const s = store().sessions.get(token);
   if (!s) return undefined;
   if (s.expires > Date.now()) return s;
@@ -89,9 +131,20 @@ function response(body: unknown, status=200, headers: Record<string,string>={}):
   });
 }
 function disabledResponse(req: Request): Response {
+  if (isProduction())
+    return response({error:"Production debugger is off. Configure the production opt-in, a strong key, and exact HTTPS origin."},404);
   if (!localRequest(req) || process.env.NODE_ENV !== "development")
     return response({error:"Debugger is disabled"},404);
   return response({error:"Debugger key not loaded in this Next.js dev process. Run init --reset in this application's folder and restart npm run dev."},404);
+}
+function allowedRequest(req: Request): boolean {
+  if(isProduction()) {
+    const origin=productionOrigin();
+    if(!origin) return false;
+    try { return new URL(req.url).origin===origin; }
+    catch { return false; }
+  }
+  return localRequest(req);
 }
 function localRequest(req: Request): boolean {
   try { return LOCAL_HOSTS.has(new URL(req.url).hostname.toLowerCase()); }
@@ -103,6 +156,7 @@ function sameOrigin(req: Request): boolean {
   try {
     const caller = new URL(origin);
     const internal = new URL(req.url);
+    if (isProduction()) return caller.origin === productionOrigin() && internal.origin === productionOrigin();
     if (caller.origin === internal.origin) return true;
     // Next.js can use an internal loopback address while preserving the public Host.
     // Permit this only for same-scheme local requests with matching Host.
@@ -134,6 +188,11 @@ function safeUrl(raw: string): string {
     }
     return (url.origin === "http://localhost" ? url.pathname + url.search : url.toString()).slice(0, 2048);
   } catch { return "[invalid URL]"; }
+}
+function productionSafeUrl(raw: string): string {
+  // On deployed sites never record URL paths, queries or fragments from visitors.
+  try { return new URL(raw,"http://localhost").origin + "/[path-redacted]"; }
+  catch { return "[URL redacted]"; }
 }
 function requestUrl(input: RequestInfo | URL): string {
   return typeof input === "string" ? input :
@@ -183,9 +242,10 @@ async function capture(original: typeof fetch, input: RequestInfo | URL, init?: 
   if (!enabled() || raw.includes(DEBUG_ROUTE)) return original(input, init);
   const method = (init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
   const opts = store().options;
+  const previewBodies = !isProduction() && opts.captureBodies === true;
   const limit = Math.min(Math.max(opts.maxBodyBytes ?? 8000, 100), 65536);
   let requestBody: unknown;
-  if (opts.captureBodies) {
+  if (previewBodies) {
     if (typeof init?.body === "string") {
       if (new TextEncoder().encode(init.body).byteLength > limit) requestBody = "[body too large]";
       else { try { requestBody = safe(JSON.parse(init.body)); } catch { requestBody = "[non-JSON omitted]"; } }
@@ -196,15 +256,15 @@ async function capture(original: typeof fetch, input: RequestInfo | URL, init?: 
   const started = performance.now();
   try {
     const res = await original(input, init);
-    const responseBody = opts.captureBodies ? await jsonPreview(res, limit) : undefined;
+    const responseBody = previewBodies ? await jsonPreview(res, limit) : undefined;
     addLog({
-      method, url: safeUrl(raw), status: res.status,
+      method, url: isProduction() ? productionSafeUrl(raw) : safeUrl(raw), status: res.status,
       durationMs: Math.round(performance.now()-started), requestBody, responseBody
     });
     return res;
   } catch (err) {
     addLog({
-      method, url: safeUrl(raw), status: 0,
+      method, url: isProduction() ? productionSafeUrl(raw) : safeUrl(raw), status: 0,
       durationMs: Math.round(performance.now()-started), requestBody,
       error: "Request failed before receiving a response"
     });
@@ -218,7 +278,7 @@ export function registerServerDebugger(options: ServerDebuggerOptions = {}): voi
       console.warn("[API Debugger] Run npx next-server-api-debugger init in your Next.js project.");
     return;
   }
-  store().options = { captureBodies: options.captureBodies ?? true, maxBodyBytes: options.maxBodyBytes ?? 8000 };
+  store().options = { captureBodies: !isProduction() && (options.captureBodies ?? true), maxBodyBytes: options.maxBodyBytes ?? 8000 };
   const current = globalThis.fetch as FetchWithMarker;
   if (current[FETCH_KEY]) return;
   const original = globalThis.fetch.bind(globalThis);
@@ -233,12 +293,12 @@ export function debugFetch(input: RequestInfo | URL, init?: RequestInit): Promis
 }
 /** app/api/next-server-api-debugger/session/route.ts - GET */
 export async function debugSessionGET(request: Request): Promise<Response> {
-  if (!enabled() || !localRequest(request)) return disabledResponse(request);
-  return response({ authenticated: Boolean(active(cookieToken(request))), ready: true });
+  if (!enabled() || !allowedRequest(request)) return disabledResponse(request);
+  return response({ authenticated: Boolean(active(cookieToken(request))), ready: true, mode: isProduction() ? "production" : "development" });
 }
 /** app/api/next-server-api-debugger/session/route.ts - POST */
 export async function debugSessionPOST(request: Request): Promise<Response> {
-  if (!enabled() || !localRequest(request)) return disabledResponse(request);
+  if (!enabled() || !allowedRequest(request)) return disabledResponse(request);
   if (!sameOrigin(request)) return response({ error:"Invalid origin" },403);
   if (!/application\/json/i.test(request.headers.get("content-type") ?? "")) return response({ error:"JSON required" },415);
   if (Number(request.headers.get("content-length") ?? 0) > 2048) return response({ error:"Request too large" },413);
@@ -257,27 +317,28 @@ export async function debugSessionPOST(request: Request): Promise<Response> {
     return response({ error:"Incorrect private debugging key" },401);
   }
   store().attempts.delete(source);
-  const token = randomBytes(32).toString("base64url");
-  store().sessions.set(token, { expires: Date.now()+TTL });
+  const token = isProduction() ? issueProductionToken() : randomBytes(32).toString("base64url");
+  if (!isProduction()) store().sessions.set(token, { expires: Date.now()+TTL });
   const secure = new URL(request.url).protocol === "https:" ? "; Secure" : "";
   return response({ authenticated:true },200,{
-    "Set-Cookie": COOKIE + "=" + token + "; HttpOnly; SameSite=Strict; Path=/; Max-Age=1800" + secure
+    "Set-Cookie": COOKIE + "=" + token + "; HttpOnly; SameSite=Strict; Path=/api/next-server-api-debugger; Max-Age=" +
+      (isProduction() ? String(PRODUCTION_TTL_SECONDS) : "1800") + secure
   });
 }
 /** app/api/next-server-api-debugger/session/route.ts - DELETE */
 export async function debugSessionDELETE(request: Request): Promise<Response> {
-  if (!enabled() || !localRequest(request)) return disabledResponse(request);
+  if (!enabled() || !allowedRequest(request)) return disabledResponse(request);
   if (!sameOrigin(request)) return response({ error:"Invalid origin" },403);
   const token = cookieToken(request);
-  if (token) store().sessions.delete(token);
+  if (token && !isProduction()) store().sessions.delete(token);
   const secure = new URL(request.url).protocol === "https:" ? "; Secure" : "";
   return response({ authenticated:false },200,{
-    "Set-Cookie": COOKIE + "=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0" + secure
+    "Set-Cookie": COOKIE + "=; HttpOnly; SameSite=Strict; Path=/api/next-server-api-debugger; Max-Age=0" + secure
   });
 }
 /** app/api/next-server-api-debugger/events/route.ts - GET */
 export async function debugEventsGET(request: Request): Promise<Response> {
-  if (!enabled() || !localRequest(request)) return disabledResponse(request);
+  if (!enabled() || !allowedRequest(request)) return disabledResponse(request);
   if (!active(cookieToken(request))) return response({ error:"Session expired; sign in again" },401);
   const since = Number(new URL(request.url).searchParams.get("since") ?? "0");
   if (!Number.isSafeInteger(since) || since < 0) return response({ error:"Invalid cursor" },400);
